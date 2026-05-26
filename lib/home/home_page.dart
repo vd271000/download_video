@@ -1,3 +1,5 @@
+/// ================= IMPORTS =================
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as dev;
@@ -13,6 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:http/http.dart';
 import 'package:in_app_review/in_app_review.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../helpers/ad_helper.dart';
@@ -20,6 +23,8 @@ import '../helpers/history_util.dart';
 import 'history_page.dart';
 
 class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
   @override
   State<HomePage> createState() => _HomePageState();
 }
@@ -28,35 +33,29 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController controller = TextEditingController();
 
   List<dynamic> medias = [];
+
   bool isEnable = false;
+  bool isDownloading = false;
+  bool isLoading = false;
+
+  double progress = 0.0;
 
   String title = "";
   String imageLink = "";
-  double progress = 0.0;
-  bool isDownloading = false;
-  bool isLoading = false;
   String textLoading = "Loading...";
   String link = "";
 
   List<String> listKeys = [];
   List<String> listYoutubeKeys = [];
 
-  final InAppReview _inAppReview = InAppReview.instance;
-
-  void _showRatingDialog() {
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false, // Người dùng phải bấm mới tắt
-      builder: (context) =>
-          CustomRatingDialog(), // Đây là dialog đánh giá đã viết ở trên
-    );
-  }
+  /// ================= INIT =================
 
   @override
   void initState() {
     super.initState();
+
+    listKeys = Config.listKeysRemotes;
+    listYoutubeKeys = Config.listKeysYoutube;
 
     Future.delayed(const Duration(seconds: 1), () {
       if (mounted) {
@@ -64,43 +63,95 @@ class _HomePageState extends State<HomePage> {
       }
     });
 
-    listKeys = Config.listKeysRemotes;
-    print(listKeys);
-
-    listYoutubeKeys = Config.listKeysYoutube;
-    print(listYoutubeKeys);
   }
 
-  Future<String> getLink(text) async {
-    RegExp exp = RegExp(r'(?:(?:https?|ftp):\/\/)?[\w/\-?=%.]+\.[\w/\-?=%.]+');
-    Iterable<RegExpMatch> matches = exp.allMatches(text);
-    String link = "";
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  /// ================= RATING =================
+
+  Future<void> _showRatingDialog() async {
+    if (!mounted) return;
+
+    final prefs =
+        await SharedPreferences.getInstance();
+
+    /// Nếu đã rate 4-5 sao rồi thì không hiện nữa
+    final hasRated =
+        prefs.getBool("has_rated") ?? false;
+
+    if (hasRated) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const CustomRatingDialog(),
+    );
+  }
+
+  /// ================= HELPERS =================
+
+  Future<String> getLink(String text) async {
+    final exp = RegExp(
+      r'(?:(?:https?|ftp):\/\/)?[\w/\-?=%.]+\.[\w/\-?=%.]+',
+    );
+
+    final matches = exp.allMatches(text);
+
+    String result = "";
+
     if (text.contains("http://xhslink.com")) {
       for (var match in matches) {
-        link = text.substring(match.start, match.end);
+        result = text.substring(match.start, match.end);
       }
     } else {
-      link = text;
+      result = text;
     }
-    return link;
+
+    return result;
   }
+
+  String? extractYoutubeId(String url) {
+    final regExp = RegExp(
+      r'(?:youtube\.com\/(?:shorts\/|watch\?v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})',
+    );
+
+    final match = regExp.firstMatch(url);
+
+    return match?.group(1);
+  }
+
+  Map<String, String> getHeaders() {
+    final key = listKeys[Random().nextInt(listKeys.length)];
+
+    dev.log("API key: $key");
+
+    return {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "x-rapidapi-host": "snap-video3.p.rapidapi.com",
+      "x-rapidapi-key": key,
+    };
+  }
+
+  /// ================= API =================
 
   Future<Map<String, dynamic>?> fetchTikTokAPI(String url) async {
     try {
       final uri = Uri.parse("https://tikwm.com/api/?url=$url");
 
       final response = await get(uri);
-      dev.log("TikTok response: $response");
 
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
 
-        /// Check chuẩn theo response bạn gửi
         if (json["code"] == 0 && json["data"] != null) {
           final data = json["data"];
 
-          /// BẮT BUỘC phải có link video
-          if (data["play"] != null && data["play"].toString().isNotEmpty) {
+          if (data["play"] != null &&
+              data["play"].toString().isNotEmpty) {
             return json;
           }
         }
@@ -118,14 +169,17 @@ class _HomePageState extends State<HomePage> {
 
       final response = await post(
         uri,
-        headers: {"Content-Type": "application/json"},
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: jsonEncode({"url": url}),
       );
 
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
 
-        if (json["status"] == "success" && json["available_formats"] != null) {
+        if (json["status"] == "success" &&
+            json["available_formats"] != null) {
           return json;
         }
       }
@@ -138,9 +192,11 @@ class _HomePageState extends State<HomePage> {
 
   Future<Map<String, dynamic>?> fetchYoutubeAPI(String url) async {
     try {
-      String id = extractYoutubeId(url) ?? "";
-      String key = listYoutubeKeys[Random().nextInt(listYoutubeKeys.length)];
-      dev.log("API key: $key");
+      final id = extractYoutubeId(url) ?? "";
+
+      final key = listYoutubeKeys[
+      Random().nextInt(listYoutubeKeys.length)];
+
       final uri = Uri.parse(
         "https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=$id",
       );
@@ -149,7 +205,8 @@ class _HomePageState extends State<HomePage> {
         uri,
         headers: {
           "Content-Type": "application/json",
-          "x-rapidapi-host": "ytstream-download-youtube-videos.p.rapidapi.com",
+          "x-rapidapi-host":
+          "ytstream-download-youtube-videos.p.rapidapi.com",
           "x-rapidapi-key": key,
         },
       );
@@ -168,74 +225,69 @@ class _HomePageState extends State<HomePage> {
     return null;
   }
 
-  String? extractYoutubeId(String url) {
-    final regExp = RegExp(
-      r'(?:youtube\.com\/(?:shorts\/|watch\?v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})',
-    );
-
-    final match = regExp.firstMatch(url);
-    return match?.group(1);
-  }
-
-  Map<String, String> getHeaders() {
-    String key = listKeys[Random().nextInt(listKeys.length)];
-    dev.log("API key: $key");
-    return {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "x-rapidapi-host": "snap-video3.p.rapidapi.com",
-      "x-rapidapi-key": key,
-    };
-  }
-
   Future<Map<String, dynamic>> postAPI([Object? body]) async {
     const int maxRetries = 10;
+
     int attempt = 0;
 
     while (attempt < maxRetries) {
       try {
-        final uri = Uri.parse("https://snap-video3.p.rapidapi.com/download");
+        final uri = Uri.parse(
+          "https://snap-video3.p.rapidapi.com/download",
+        );
 
         final response = await post(
           uri,
-          headers: getHeaders(), // 🔥 luôn lấy header mới mỗi lần retry
+          headers: getHeaders(),
           body: body,
         );
 
         final json = jsonDecode(response.body);
 
-        /// Check response hợp lệ
         if (response.statusCode == 200 && json != null) {
           return json;
         } else {
-          throw Exception("Invalid response or status code");
+          throw Exception("Invalid response");
         }
       } catch (e) {
         attempt++;
 
         dev.log("Retry $attempt/$maxRetries - Error: $e");
 
-        /// Nếu đã thử đủ 5 lần → throw lỗi
         if (attempt >= maxRetries) {
-          throw Exception("API failed after $maxRetries attempts");
+          throw Exception(
+            "API failed after $maxRetries attempts",
+          );
         }
 
-        /// Delay nhẹ tránh spam API (optional nhưng nên có)
-        await Future.delayed(const Duration(milliseconds: 500));
+        await Future.delayed(
+          const Duration(milliseconds: 500),
+        );
       }
     }
 
-    throw Exception("Unexpected error"); // fallback
+    throw Exception("Unexpected error");
   }
 
-  Future _getClipboardText() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    link = await getLink(data?.text);
+  /// ================= CLIPBOARD =================
+
+  Future<void> _getClipboardText() async {
+    final data = await Clipboard.getData(
+      Clipboard.kTextPlain,
+    );
+
+    link = await getLink(data?.text ?? "");
+
+    if (!mounted) return;
+
     setState(() {
       controller.text = link;
       isEnable = false;
       medias = [];
     });
   }
+
+  /// ================= GET DATA =================
 
   Future<void> getData() async {
     if (link.isEmpty) {
@@ -244,17 +296,15 @@ class _HomePageState extends State<HomePage> {
     }
 
     try {
-      /// ================== ƯU TIÊN TIKTOK ==================
+      /// ================= TIKTOK =================
+
       if (link.contains("tiktok.com")) {
         setState(() {
           textLoading = "Tiktok...";
           isLoading = true;
         });
 
-        dev.log("link tiktok: $link");
-
         final tiktokJson = await fetchTikTokAPI(link);
-        dev.log("tiktokJson: $tiktokJson");
 
         if (tiktokJson != null) {
           final data = tiktokJson["data"];
@@ -263,14 +313,17 @@ class _HomePageState extends State<HomePage> {
           final cover = data["cover"];
           final desc = data["title"] ?? "TikTok Video";
 
-          if (videoUrl != null && videoUrl.toString().isNotEmpty) {
-            final List mediasTikTok = [
-              {"url": videoUrl, "quality": "hd", "extension": "mp4"},
+          if (videoUrl != null &&
+              videoUrl.toString().isNotEmpty) {
+            final mediasTikTok = [
+              {
+                "url": videoUrl,
+                "quality": "hd",
+                "extension": "mp4",
+              },
             ];
 
             if (!mounted) return;
-
-            dev.log("API tiktok: success");
 
             setState(() {
               title = desc;
@@ -280,42 +333,50 @@ class _HomePageState extends State<HomePage> {
               isLoading = false;
             });
 
-            /// SAVE HISTORY
             await HistoryUtil.addHistory({
               "title": title,
               "thumbnail": imageLink,
               "medias": mediasTikTok,
             });
-            dev.log("TikTok API OK");
 
-            return; // ✅ QUAN TRỌNG: dừng tại đây nếu TikTok OK
+            return;
           }
         }
-
-        /// ❌ Nếu TikTok API fail → fallback
-        dev.log("TikTok API failed → fallback to default API");
       }
 
-      /// ================== FACEBOOK ==================
-      if (link.contains("facebook.com") || link.contains("fb.watch")) {
+      /// ================= FACEBOOK =================
+
+      if (link.contains("facebook.com") ||
+          link.contains("fb.watch")) {
         setState(() {
           textLoading = "Facebook...";
           isLoading = true;
         });
 
-        dev.log("link facebook: $link");
-
         final fbJson = await fetchFacebookAPI(link);
 
         if (fbJson != null) {
           final info = fbJson["video_info"];
-          final formats = fbJson["available_formats"] as List;
 
-          /// 🔥 lấy video chất lượng cao nhất
+          final formats =
+          fbJson["available_formats"] as List;
+
           formats.sort((a, b) {
-            final qa = int.tryParse(a["quality"].replaceAll("p", "")) ?? 0;
-            final qb = int.tryParse(b["quality"].replaceAll("p", "")) ?? 0;
-            return qb.compareTo(qa); // giảm dần
+            final qa = int.tryParse(
+              a["quality"]
+                  .toString()
+                  .replaceAll("p", ""),
+            ) ??
+                0;
+
+            final qb = int.tryParse(
+              b["quality"]
+                  .toString()
+                  .replaceAll("p", ""),
+            ) ??
+                0;
+
+            return qb.compareTo(qa);
           });
 
           final best = formats.first;
@@ -343,106 +404,111 @@ class _HomePageState extends State<HomePage> {
             "thumbnail": imageLink,
             "medias": mediasFB,
           });
-          dev.log("Facebook API OK");
 
           return;
         }
-
-        dev.log("Facebook fail → fallback");
       }
 
-      /// ================== ƯU TIÊN YOUTUBE ==================
-      if (link.contains("youtube.com")) {
-        if(Config.checkYouTube == true) {
+      /// ================= YOUTUBE =================
+
+      if (link.contains("youtube") ||
+          link.contains("youtu")) {
+        if (Config.checkYouTube == true) {
           _showError("Cannot get Youtube video !");
           return;
         }
+
         setState(() {
           textLoading = "Youtube...";
           isLoading = true;
         });
 
-        dev.log("link youtube: $link");
+        final youtubeJson =
+        await fetchYoutubeAPI(link);
 
-        final youtubeJson = await fetchYoutubeAPI(link);
         if (youtubeJson != null) {
-          List<dynamic> thumbnail = youtubeJson["thumbnail"];
-          dev.log("thumbnail: $thumbnail");
+          final thumbnail =
+          youtubeJson["thumbnail"] as List<dynamic>;
+
           String cover = "";
+
           if (thumbnail.isNotEmpty) {
             cover = thumbnail.last["url"];
           }
-          final desc = youtubeJson["title"] ?? "Youtube Video";
-          dev.log("desc: $desc");
-          List<dynamic> adaptiveFormats = youtubeJson["adaptiveFormats"];
-          final mp4Videos = adaptiveFormats.where((item) {
-            final mimeType = item["mimeType"] ?? "";
+
+          final desc =
+              youtubeJson["title"] ?? "Youtube Video";
+
+          final adaptiveFormats =
+          youtubeJson["adaptiveFormats"]
+          as List<dynamic>;
+
+          final mp4Videos =
+          adaptiveFormats.where((item) {
+            final mimeType =
+                item["mimeType"] ?? "";
+
             return mimeType.contains("video/mp4");
           }).toList();
-          dev.log("mp4Videos: $mp4Videos");
+
           String videoUrl = "";
 
           if (mp4Videos.isNotEmpty) {
             videoUrl = mp4Videos.first["url"];
           }
 
-          if (videoUrl.toString().isNotEmpty) {
-            final List mediasYoutube = [
-              {"url": videoUrl, "quality": "hd", "extension": "mp4"},
+          if (videoUrl.isNotEmpty) {
+            final mediasYoutube = [
+              {
+                "url": videoUrl,
+                "quality": "hd",
+                "extension": "mp4",
+              },
             ];
 
             if (!mounted) return;
 
-            dev.log("API tiktok: success");
-
             setState(() {
               title = desc;
-              imageLink = cover ?? "";
+              imageLink = cover;
               medias = mediasYoutube;
               isEnable = true;
               isLoading = false;
             });
 
-            /// SAVE HISTORY
             await HistoryUtil.addHistory({
               "title": title,
               "thumbnail": imageLink,
               "medias": mediasYoutube,
             });
-            dev.log("Youtube API OK");
 
-            return; // ✅ QUAN TRỌNG: dừng tại đây nếu TikTok OK
+            return;
           }
         }
-
-        /// ❌ Nếu Youtube API fail → fallback
-        dev.log("Youtube API failed → fallback to default API");
       }
+
+      /// ================= FALLBACK =================
 
       setState(() {
         textLoading = "Loading...";
         isLoading = true;
       });
 
-      final jsons = await postAPI({"url": link});
+      final jsons = await postAPI({
+        "url": link,
+      });
 
-      dev.log("API response: $jsons");
-
-      /// CHECK API FAIL
       if (jsons.isEmpty || jsons["medias"] == null) {
         throw Exception("Invalid response");
       }
 
-      final List mediasRaw = jsons["medias"] as List;
+      final mediasRaw = jsons["medias"] as List;
 
-      /// FILTER VIDEO
-      final filtered = mediasRaw
-          .where(
-            (e) =>
-                e["extension"] == "mp4" &&
-                (e["quality"] == "hd" || e["quality"] == "720p"),
-          )
-          .toList();
+      final filtered = mediasRaw.where((e) {
+        return e["extension"] == "mp4" &&
+            (e["quality"] == "hd" ||
+                e["quality"] == "720p");
+      }).toList();
 
       if (!mounted) return;
 
@@ -454,13 +520,11 @@ class _HomePageState extends State<HomePage> {
         isLoading = false;
       });
 
-      /// NO VIDEO FOUND
       if (filtered.isEmpty) {
         _showError("No HD video found!");
         return;
       }
 
-      /// SAVE HISTORY
       await HistoryUtil.addHistory({
         "title": title,
         "thumbnail": imageLink,
@@ -480,15 +544,103 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// ================= DOWNLOAD =================
+
+  Future<void> downloadVideo(String url) async {
+    setState(() {
+      isDownloading = true;
+      progress = 0;
+    });
+
+    final dio = Dio();
+
+    final path =
+        "/storage/emulated/0/Download/${DateTime.now().millisecondsSinceEpoch}.mp4";
+
+    try {
+      await dio.download(
+        url,
+        path,
+        onReceiveProgress: (received, total) {
+          if (total != -1) {
+            if (!mounted) return;
+
+            setState(() {
+              progress = received / total;
+            });
+          }
+        },
+      );
+
+      await GallerySaverUtil.saveVideoToGallery(path);
+
+      if (!mounted) return;
+
+      _showRatingDialog();
+
+      Flushbar(
+        margin: const EdgeInsets.all(16),
+        borderRadius: BorderRadius.circular(16),
+        backgroundColor: const Color(0xff00C853),
+        duration: const Duration(seconds: 2),
+        icon: const Icon(
+          Icons.check_circle,
+          color: Colors.white,
+        ),
+        messageText: const Text(
+          "Downloaded Successfully 🎉",
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ).show(context);
+    } catch (_) {
+      if (!mounted) return;
+
+      Flushbar(
+        margin: const EdgeInsets.all(16),
+        borderRadius: BorderRadius.circular(16),
+        backgroundColor: Colors.redAccent,
+        duration: const Duration(seconds: 2),
+        icon: const Icon(
+          Icons.error,
+          color: Colors.white,
+        ),
+        messageText: const Text(
+          "Download Failed ❌",
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ).show(context);
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      isDownloading = false;
+    });
+  }
+
+  /// ================= ERROR =================
+
   void _showError(String msg) {
     Flushbar(
       margin: const EdgeInsets.all(16),
       borderRadius: BorderRadius.circular(16),
       backgroundGradient: const LinearGradient(
-        colors: [Colors.redAccent, Colors.deepOrange],
+        colors: [
+          Colors.redAccent,
+          Colors.deepOrange,
+        ],
       ),
       duration: const Duration(seconds: 2),
-      icon: const Icon(Icons.error, color: Colors.white),
+      icon: const Icon(
+        Icons.error,
+        color: Colors.white,
+      ),
       messageText: Text(
         msg,
         style: const TextStyle(
@@ -499,253 +651,427 @@ class _HomePageState extends State<HomePage> {
     ).show(context);
   }
 
-  Widget _buildLoading() {
-    return Positioned.fill(
-      child: Container(
-        color: Colors.black.withOpacity(0.5),
-        child: Center(
-          child: Container(
-            width: 140,
-            height: 140,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(30),
-              gradient: LinearGradient(
-                colors: [
-                  Colors.cyanAccent.withOpacity(0.2),
-                  Colors.blueAccent.withOpacity(0.2),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              border: Border.all(
-                color: Colors.cyanAccent.withOpacity(0.5),
-                width: 2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.cyanAccent.withOpacity(0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox(
-                      width: 70,
-                      height: 70,
-                      child: CircularProgressIndicator(
-                        value: progress,
-                        strokeWidth: 6,
-                        backgroundColor: Colors.cyanAccent.withOpacity(0.2),
-                        color: Colors.cyanAccent,
-                      ),
-                    ),
-                    Text(
-                      "${(progress * 100).toStringAsFixed(0)}%",
-                      style: const TextStyle(
-                        color: Colors.cyanAccent,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 15),
-                const Text(
-                  "Downloading...",
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: 80,
-                  child: LinearProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      Colors.cyanAccent,
-                    ),
-                    backgroundColor: Colors.cyanAccent.withOpacity(0.2),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future downloadVideo(String url) async {
-    setState(() => isDownloading = true);
-
-    Dio dio = Dio();
-    String path =
-        "/storage/emulated/0/Download/${DateTime.now().millisecondsSinceEpoch}.mp4";
-
-    try {
-      await dio.download(
-        url,
-        path,
-        onReceiveProgress: (r, t) {
-          setState(() => progress = r / t);
-        },
-      );
-
-      await GallerySaverUtil.saveVideoToGallery(path);
-
-      Flushbar(
-        message: "Downloaded Successfully 🎉",
-        duration: const Duration(seconds: 2),
-      ).show(context);
-    } catch (_) {
-      Flushbar(
-        message: "Download Failed ❌",
-        duration: const Duration(seconds: 2),
-      ).show(context);
-    }
-
-    setState(() => isDownloading = false);
-  }
+  /// ================= BUILD =================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          _bg(),
+      backgroundColor: const Color(0xffF6F8FC),
+      resizeToAvoidBottomInset: false,
+      body: GestureDetector(
+        onTap: () {
+          FocusScope.of(context).unfocus();
+        },
+        child: Stack(
+          children: [
+            _bg(),
 
-          SafeArea(
-            child: Column(
-              children: [
-                _header(),
-                _search(),
-                _mainButton(),
-
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 400),
-                    child: isEnable ? _preview() : _emptyWithAds(),
-                  ),
-                ),
-              ],
+            Positioned(
+              top: -120,
+              right: -90,
+              child: _glow(
+                size: 320,
+                color: const Color(0xffB8F5D3)
+                    .withOpacity(.55),
+              ),
             ),
-          ),
 
-          if (isLoading) _loadingOverlay(textLoading),
-          if (isDownloading) _buildLoading(),
-        ],
+            Positioned(
+              bottom: -140,
+              left: -100,
+              child: _glow(
+                size: 340,
+                color: const Color(0xffD9E8FF)
+                    .withOpacity(.55),
+              ),
+            ),
+
+            SafeArea(
+              child: Column(
+                children: [
+                  _header(),
+                  _search(),
+                  _mainButton(),
+
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(
+                        milliseconds: 400,
+                      ),
+                      child: isEnable
+                          ? _preview()
+                          : _emptyWithAds(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            if (isLoading)
+              _loadingOverlay(textLoading),
+
+            if (isDownloading)
+              _buildLoading(),
+          ],
+        ),
       ),
     );
   }
 
+
   /// ================= UI =================
 
-  Widget _bg() => Container(
-    decoration: const BoxDecoration(
-      gradient: LinearGradient(
-        colors: [Color(0xff0f2027), Color(0xff203a43), Color(0xff2c5364)],
+  Widget _bg() => Stack(
+    children: [
+      Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xffFFFFFF),
+              Color(0xffF8FAFD),
+              Color(0xffEEF3F9),
+            ],
+          ),
+        ),
       ),
-    ),
+
+      Positioned.fill(
+        child: CustomPaint(
+          painter: _GridPainter(),
+        ),
+      ),
+
+      Positioned.fill(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: 24,
+            sigmaY: 24,
+          ),
+          child: Container(
+            color: Colors.white.withOpacity(.08),
+          ),
+        ),
+      ),
+    ],
   );
 
   Widget _header() => Padding(
-    padding: const EdgeInsets.all(16),
+    padding:
+    const EdgeInsets.fromLTRB(20, 18, 20, 10),
     child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisAlignment:
+      MainAxisAlignment.spaceBetween,
       children: [
-        const Text(
-          "Snap Video",
-          style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
+        Column(
+          crossAxisAlignment:
+          CrossAxisAlignment.start,
+          children: [
+            ShaderMask(
+              shaderCallback: (bounds) {
+                return const LinearGradient(
+                  colors: [
+                    Color(0xff111111),
+                    Color(0xff444444),
+                    Color(0xff00C853),
+                  ],
+                ).createShader(bounds);
+              },
+              child: const Text(
+                "Snap Video",
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  letterSpacing: -.5,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 4),
+
+            Text(
+              "Fast • HD • No Watermark",
+              style: TextStyle(
+                color:
+                Colors.black.withOpacity(.45),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
-        IconButton(
-          icon: const Icon(Icons.history, color: Colors.white),
-          onPressed: () {
+
+        GestureDetector(
+          onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const HistoryPage()),
+              MaterialPageRoute(
+                builder: (_) =>
+                const HistoryPage(),
+              ),
             );
           },
+          child: Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              borderRadius:
+              BorderRadius.circular(18),
+              color:
+              Colors.white.withOpacity(.75),
+              border: Border.all(
+                color:
+                Colors.white,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black
+                      .withOpacity(.05),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.history_rounded,
+              color: Color(0xff111111),
+            ),
+          ),
         ),
       ],
     ),
   );
 
   Widget _search() => Container(
-    margin: const EdgeInsets.symmetric(horizontal: 16),
-    padding: const EdgeInsets.symmetric(horizontal: 12),
-    height: 55,
+    margin:
+    const EdgeInsets.symmetric(horizontal: 20),
+    padding:
+    const EdgeInsets.symmetric(horizontal: 16),
+    height: 62,
     decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(20),
-      color: Colors.white.withOpacity(0.08),
+      borderRadius: BorderRadius.circular(24),
+      color: Colors.white.withOpacity(.75),
+      border: Border.all(
+        color: Colors.white,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(.05),
+          blurRadius: 24,
+          offset: const Offset(0, 10),
+        ),
+      ],
     ),
     child: Row(
       children: [
-        const Icon(Icons.link, color: Colors.cyanAccent),
-        const SizedBox(width: 10),
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            borderRadius:
+            BorderRadius.circular(14),
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xff00E676),
+                Color(0xff00C853),
+              ],
+            ),
+          ),
+          child: const Icon(
+            Icons.link_rounded,
+            color: Colors.white,
+          ),
+        ),
+
+        const SizedBox(width: 14),
+
         Expanded(
           child: TextField(
-            readOnly: true,
             controller: controller,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
-              hintText: "Paste video link...",
-              hintStyle: TextStyle(color: Colors.white54),
+            readOnly: true,
+            keyboardType: TextInputType.none,
+            enableInteractiveSelection: false,
+            showCursor: false,
+            focusNode: FocusNode(
+              canRequestFocus: false,
+            ),
+            style: const TextStyle(
+              color: Color(0xff111111),
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+            decoration: InputDecoration(
+              hintText:
+              "Paste video link here...",
+              hintStyle: TextStyle(
+                color:
+                Colors.black.withOpacity(.35),
+              ),
               border: InputBorder.none,
             ),
           ),
         ),
-        IconButton(
-          icon: const Icon(Icons.paste, color: Colors.white),
-          onPressed: _getClipboardText,
+
+        GestureDetector(
+          onTap: _getClipboardText,
+          child: Container(
+            padding:
+            const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 10,
+            ),
+            decoration: BoxDecoration(
+              borderRadius:
+              BorderRadius.circular(14),
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xff111111),
+                  Color(0xff2C2C2C),
+                ],
+              ),
+            ),
+            child: const Row(
+              children: [
+                Icon(
+                  Icons.content_paste_rounded,
+                  size: 18,
+                  color: Colors.white,
+                ),
+                SizedBox(width: 6),
+                Text(
+                  "Paste",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     ),
   );
 
   Widget _mainButton() => Padding(
-    padding: const EdgeInsets.all(16),
+    padding: const EdgeInsets.all(20),
     child: _button(
       text: "Get Video",
-      onTap: () {
+      icon: Icons.download_rounded,
+      onTap: () async {
         if (link.isEmpty) return;
-        AdHelper.showInterstitial(() => getData());
+
+        final prefs =
+            await SharedPreferences.getInstance();
+
+        /// Nếu đã rate 4-5 sao rồi thì không hiện nữa
+        final hasRated =
+            prefs.getBool("has_rated") ?? false;
+
+        if (hasRated) {
+          AdHelper.showInterstitial(() {
+            getData();
+          });
+        } else {
+          getData();
+        }
       },
     ),
   );
 
   Widget _preview() => Padding(
-    padding: const EdgeInsets.all(16),
+    padding:
+    const EdgeInsets.symmetric(horizontal: 20),
     child: Column(
+      crossAxisAlignment:
+      CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: Colors.white),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius:
+            BorderRadius.circular(24),
+            color:
+            Colors.white.withOpacity(.04),
+            border: Border.all(
+              color:
+              Colors.white.withOpacity(.06),
+            ),
+          ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius:
+                BorderRadius.circular(16),
+                child: Image.network(
+                  imageLink,
+                  width: 70,
+                  height: 70,
+                  fit: BoxFit.cover,
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow:
+                  TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontWeight:
+                    FontWeight.w700,
+                    fontSize: 15,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 10),
-        _buildVideoPreview(),
-        const SizedBox(height: 16),
+
+        const SizedBox(height: 12),
+
+        Expanded(
+          child: _buildVideoPreview(),
+        ),
+
+        const SizedBox(height: 12),
+
         ...medias.map(
-          (m) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+              (m) => Padding(
+            padding:
+            const EdgeInsets.only(bottom: 12),
             child: _button(
               text: "Download HD",
-              onTap: () => {
-                setState(() => isLoading = true),
-                AdHelper.showInterstitial(() {
-                  setState(() => isLoading = false);
+              icon: Icons.download,
+              onTap: () async {
+                setState(() {
+                  isLoading = true;
+                });
+
+                final prefs =
+                    await SharedPreferences.getInstance();
+
+                /// Nếu đã rate 4-5 sao rồi thì không hiện nữa
+                final hasRated =
+                    prefs.getBool("has_rated") ?? false;
+
+                if (hasRated) {
+                  AdHelper.showInterstitial(() {
+                    setState(() {
+                      isLoading = false;
+                    });
+
+                    downloadVideo(m["url"]);
+                  });
+                } else {
                   downloadVideo(m["url"]);
-                }),
+                }
               },
             ),
           ),
@@ -756,17 +1082,18 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildVideoPreview() {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(30),
       child: Stack(
         alignment: Alignment.center,
         children: [
-          /// ẢNH VIDEO
           AspectRatio(
             aspectRatio: 1 / 1,
-            child: Image.network(imageLink, fit: BoxFit.cover),
+            child: Image.network(
+              imageLink,
+              fit: BoxFit.cover,
+            ),
           ),
 
-          /// GRADIENT OVERLAY (CHO ĐẸP + RÕ NÚT PLAY)
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
@@ -774,48 +1101,53 @@ class _HomePageState extends State<HomePage> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withOpacity(0.2),
-                    Colors.black.withOpacity(0.4),
+                    Colors.black.withOpacity(.15),
+                    Colors.black.withOpacity(.55),
                   ],
                 ),
               ),
             ),
           ),
 
-          /// NÚT PLAY (NEON GLASS)
           TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.9, end: 1.1),
-            duration: const Duration(seconds: 1),
+            tween: Tween(begin: .92, end: 1.08),
+            duration:
+            const Duration(milliseconds: 1200),
             curve: Curves.easeInOut,
-            builder: (context, scale, child) {
-              return Transform.scale(scale: scale, child: child);
+            builder: (_, scale, child) {
+              return Transform.scale(
+                scale: scale,
+                child: child,
+              );
             },
             onEnd: () {
-              if (mounted) setState(() {});
+              if (mounted) {
+                setState(() {});
+              }
             },
             child: Container(
-              width: 70,
-              height: 70,
+              width: 92,
+              height: 92,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.15),
+                color:
+                Colors.white.withOpacity(.10),
+                border: Border.all(
+                  color:
+                  Colors.white.withOpacity(.15),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xff00E676)
+                        .withOpacity(.30),
+                    blurRadius: 40,
+                  ),
+                ],
               ),
               child: const Icon(
-                Icons.play_arrow,
+                Icons.play_arrow_rounded,
+                size: 50,
                 color: Colors.white,
-                size: 38,
-              ),
-            ),
-          ),
-
-          /// HIỆU ỨNG CLICK (optional)
-          Positioned.fill(
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  // 👉 sau này bạn có thể mở preview video
-                },
               ),
             ),
           ),
@@ -824,206 +1156,512 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _emptyWithAds() => Center(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // 🔥 ICON + BACKGROUND (modern style)
-          Container(
-            width: 110,
-            height: 110,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(30),
-              gradient: LinearGradient(
-                colors: [
-                  Colors.blueAccent.withOpacity(0.8),
-                  Colors.purpleAccent.withOpacity(0.8),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.blueAccent.withOpacity(0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
+  Widget _emptyWithAds() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 28,
+        ),
+        child: Column(
+          mainAxisAlignment:
+          MainAxisAlignment.center,
+          children: [
+            const SizedBox(height: 24),
+
+            ShaderMask(
+              shaderCallback: (bounds) {
+                return const LinearGradient(
+                  colors: [
+                    const Color(0xff111111),
+                    const Color(0xff5A5A5A),
+                    const Color(0xff00C853),
+                  ],
+                ).createShader(bounds);
+              },
+              child: const Text(
+                "Paste Link to Download",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  letterSpacing: -.5,
+                  height: 1.1,
                 ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            Text(
+              "Download videos instantly in ultra HD quality with blazing fast speed and zero watermark.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color:
+                Colors.black.withOpacity(.60),
+                fontSize: 14,
+                height: 1.7,
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            // GestureDetector(
+            //   onTap: _getClipboardText,
+            //   child: Container(
+            //     padding:
+            //     const EdgeInsets.symmetric(
+            //       horizontal: 28,
+            //       vertical: 18,
+            //     ),
+            //     decoration: BoxDecoration(
+            //       borderRadius:
+            //       BorderRadius.circular(24),
+            //       gradient: const LinearGradient(
+            //         colors: [
+            //           Color(0xff00E676),
+            //           Color(0xff00C853),
+            //         ],
+            //       ),
+            //       boxShadow: [
+            //         BoxShadow(
+            //           color: const Color(0xff00E676)
+            //               .withOpacity(.35),
+            //           blurRadius: 30,
+            //         ),
+            //       ],
+            //     ),
+            //     child: const Row(
+            //       mainAxisSize: MainAxisSize.min,
+            //       children: [
+            //         Icon(
+            //           Icons.content_paste_rounded,
+            //           color: Colors.white,
+            //         ),
+            //         SizedBox(width: 10),
+            //         Text(
+            //           "Paste & Download",
+            //           style: TextStyle(
+            //             color: Colors.white,
+            //             fontWeight:
+            //             FontWeight.w900,
+            //             fontSize: 15,
+            //           ),
+            //         ),
+            //       ],
+            //     ),
+            //   ),
+            // ),
+            //
+            // const SizedBox(height: 24),
+
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _feature("No Watermark"),
+                _feature("4K HD"),
+                _feature("Ultra Fast"),
               ],
             ),
-            child: const Icon(
-              Icons.download_rounded,
-              size: 50,
-              color: Colors.white,
-            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _feature(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 10,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: Colors.black.withOpacity(.05),
+        border: Border.all(
+          color: Colors.black.withOpacity(.06),
+        ),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 13,
+          color: Colors.black.withOpacity(.75),
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _button({
+    required String text,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 60,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: const LinearGradient(
+            colors: [
+              Color(0xff00E676),
+              Color(0xff00C853),
+            ],
           ),
-
-          const SizedBox(height: 32),
-
-          // 🎯 TITLE
-          const Text(
-            "Paste Link to Download",
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              letterSpacing: 0.3,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xff00E676)
+                  .withOpacity(.35),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
             ),
-            textAlign: TextAlign.center,
-          ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment:
+          MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: Colors.white),
 
-          const SizedBox(height: 10),
+            const SizedBox(width: 10),
 
-          // 📝 SUBTEXT
-          Text(
-            "Download videos instantly in HD quality\nNo watermark • Fast • Free",
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.white.withOpacity(0.7),
-              height: 1.5,
+            Text(
+              text,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+              ),
             ),
-            textAlign: TextAlign.center,
-          ),
+          ],
+        ),
+      ),
+    );
+  }
 
-          const SizedBox(height: 28),
-
-          // 🚀 CTA BUTTON (clean + modern)
-          GestureDetector(
-            onTap: () {
-              // focus input hoặc paste clipboard
-              _getClipboardText();
-            },
+  Widget _loadingOverlay(String text) {
+    return Positioned.fill(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(
+          sigmaX: 10,
+          sigmaY: 10,
+        ),
+        child: Container(
+          color: Colors.black.withOpacity(.45),
+          child: Center(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
+              padding:
+              const EdgeInsets.symmetric(
+                horizontal: 30,
+                vertical: 24,
+              ),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF4FACFE), Color(0xFF00F2FE)],
+                borderRadius:
+                BorderRadius.circular(28),
+                color:
+                Colors.white.withOpacity(.05),
+                border: Border.all(
+                  color:
+                  Colors.white.withOpacity(.08),
                 ),
               ),
-              child: const Row(
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.paste, color: Colors.white),
-                  SizedBox(width: 8),
+                  const SizedBox(
+                    width: 42,
+                    height: 42,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 4,
+                      color: Color(0xff00E676),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
                   Text(
-                    "Paste & Download",
-                    style: TextStyle(
+                    text,
+                    style: const TextStyle(
                       color: Colors.white,
-                      fontWeight: FontWeight.w600,
+                      fontWeight:
+                      FontWeight.w700,
                     ),
                   ),
                 ],
               ),
             ),
           ),
-
-          const SizedBox(height: 24),
-
-          // ✨ FEATURE ROW (đồng bộ + gọn)
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 10,
-            runSpacing: 8,
-            children: [
-              _feature("No Watermark"),
-              _feature("HD Quality"),
-              _feature("Fast"),
-            ],
-          ),
-        ],
-      ),
-    ),
-  );
-
-  Widget _feature(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        color: Colors.white.withOpacity(0.08),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.75)),
+        ),
       ),
     );
   }
 
-  /// ================= COMPONENT =================
+  Widget _buildLoading() {
+    return Positioned.fill(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(
+          sigmaX: 12,
+          sigmaY: 12,
+        ),
+        child: Container(
+          color: Colors.black.withOpacity(.45),
+          child: Center(
+            child: Container(
+              width: 180,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                borderRadius:
+                BorderRadius.circular(34),
+                color:
+                Colors.white.withOpacity(.05),
+                border: Border.all(
+                  color:
+                  Colors.white.withOpacity(.08),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xff00E676)
+                        .withOpacity(.25),
+                    blurRadius: 40,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: 82,
+                        height: 82,
+                        child:
+                        CircularProgressIndicator(
+                          value: progress,
+                          strokeWidth: 6,
+                          backgroundColor:
+                          Colors.white
+                              .withOpacity(.08),
+                          valueColor:
+                          const AlwaysStoppedAnimation(
+                            Color(0xff00E676),
+                          ),
+                        ),
+                      ),
 
-  Widget _button({required String text, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 52,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(30),
-          gradient: const LinearGradient(
-            colors: [Color(0xff00ffcc), Color(0xff00ccff)],
+                      Text(
+                        "${(progress * 100).toInt()}%",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight:
+                          FontWeight.w900,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  const Text(
+                    "Downloading...",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight:
+                      FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  Text(
+                    "Preparing ultra fast download",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color:
+                      Colors.white.withOpacity(
+                        .55,
+                      ),
+                      fontSize: 13,
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  ClipRRect(
+                    borderRadius:
+                    BorderRadius.circular(30),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 8,
+                      backgroundColor:
+                      Colors.white
+                          .withOpacity(.06),
+                      valueColor:
+                      const AlwaysStoppedAnimation(
+                        Color(0xff00E676),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _glow({
+    required double size,
+    required Color color,
+  }) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: Colors.cyanAccent.withOpacity(0.5),
-              blurRadius: 12,
+              color: color,
+              blurRadius: 150,
+              spreadRadius: 80,
             ),
           ],
         ),
-        child: Text(
-          text,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
       ),
     );
   }
-
-  Widget _loadingOverlay(String text) => Container(
-    color: Colors.black.withOpacity(0.5),
-    child: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const CircularProgressIndicator(color: Colors.cyanAccent),
-          const SizedBox(height: 10),
-          Text(text, style: const TextStyle(color: Colors.white)),
-        ],
-      ),
-    ),
-  );
-
-  Widget _downloadOverlay() => _loadingOverlay("Downloading...");
 }
 
+/// ================= GRID =================
+
+class _GridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(.03)
+      ..strokeWidth = .6;
+
+    const gap = 38.0;
+
+    for (double x = 0; x < size.width; x += gap) {
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x, size.height),
+        paint,
+      );
+    }
+
+    for (double y = 0; y < size.height; y += gap) {
+      canvas.drawLine(
+        Offset(0, y),
+        Offset(size.width, y),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(
+      covariant CustomPainter oldDelegate,
+      ) {
+    return false;
+  }
+}
+
+/// ================= GALLERY =================
+
 class GallerySaverUtil {
-  static const MethodChannel _channel = MethodChannel(
+  static const MethodChannel _channel =
+  MethodChannel(
     "com.example.save_video/gallery",
   );
 
-  static Future<void> saveVideoToGallery(String path) async {
+  static Future<void> saveVideoToGallery(
+      String path,
+      ) async {
     if (Platform.isAndroid) {
-      await _channel.invokeMethod("saveVideoToGallery", {"path": path});
+      await _channel.invokeMethod(
+        "saveVideoToGallery",
+        {"path": path},
+      );
     }
   }
 }
 
 class CustomRatingDialog extends StatefulWidget {
+  const CustomRatingDialog({super.key});
+
   @override
-  _CustomRatingDialogState createState() => _CustomRatingDialogState();
+  State<CustomRatingDialog> createState() =>
+      _CustomRatingDialogState();
 }
 
-class _CustomRatingDialogState extends State<CustomRatingDialog> {
-  int _selectedRating = 5;
-  final InAppReview _inAppReview = InAppReview.instance;
+class _CustomRatingDialogState
+    extends State<CustomRatingDialog>
+    with TickerProviderStateMixin {
 
-  void _submitRating() async {
+  int _selectedRating = 5;
+
+  final InAppReview _inAppReview =
+      InAppReview.instance;
+
+  late final AnimationController
+  _pulseController;
+
+  late final Animation<double> _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(
+        milliseconds: 1600,
+      ),
+    )..repeat(reverse: true);
+
+    _pulse = Tween<double>(
+      begin: .96,
+      end: 1.04,
+    ).animate(
+      CurvedAnimation(
+        parent: _pulseController,
+        curve: Curves.easeInOut,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitRating() async {
+    Navigator.pop(context);
+
     if (_selectedRating >= 4) {
       try {
+        final prefs =
+        await SharedPreferences.getInstance();
+
+        /// Đánh dấu đã rate hài lòng
+        await prefs.setBool(
+          "has_rated",
+          true,
+        );
+
         if (await _inAppReview.isAvailable()) {
           await _inAppReview.requestReview();
         } else {
@@ -1040,35 +1678,35 @@ class _CustomRatingDialogState extends State<CustomRatingDialog> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Thanks for loving our video downloader! ❤️"),
-        ),
+      _showSnack(
+        "Thanks for supporting Snap Video ❤️",
       );
     } else {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Thanks! We'll improve your download experience 💪"),
-        ),
+      _showSnack(
+        "Thanks! We'll improve your experience 🚀",
       );
     }
-
-    Navigator.of(context).pop();
   }
 
-  Widget _buildStar(int index) {
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedRating = index + 1;
-        });
-      },
-      child: Icon(
-        index < _selectedRating ? Icons.star : Icons.star_border,
-        color: Colors.yellow,
-        size: 40,
+  void _showSnack(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor:
+        const Color(0xff111111),
+        shape: RoundedRectangleBorder(
+          borderRadius:
+          BorderRadius.circular(18),
+        ),
+        content: Text(
+          text,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
@@ -1077,136 +1715,324 @@ class _CustomRatingDialogState extends State<CustomRatingDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              gradient: LinearGradient(
-                colors: [
-                  Colors.white.withOpacity(0.05),
-                  Colors.white.withOpacity(0.02),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              border: Border.all(
-                color: Colors.cyanAccent.withOpacity(0.6),
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.cyanAccent.withOpacity(0.3),
-                  blurRadius: 20,
-                  spreadRadius: 2,
-                ),
-              ],
+      insetPadding:
+      const EdgeInsets.symmetric(
+        horizontal: 22,
+      ),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: .9, end: 1),
+        duration: const Duration(
+          milliseconds: 450,
+        ),
+        curve: Curves.easeOutBack,
+        builder: (_, scale, child) {
+          return Transform.scale(
+            scale: scale,
+            child: child,
+          );
+        },
+        child: ClipRRect(
+          borderRadius:
+          BorderRadius.circular(36),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(
+              sigmaX: 30,
+              sigmaY: 30,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                /// 🚀 ICON
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.cyanAccent.withOpacity(0.1),
-                  ),
-                  child: const Icon(
-                    Icons.download_rounded,
-                    color: Colors.cyanAccent,
-                    size: 30,
-                  ),
+            child: Container(
+              padding:
+              const EdgeInsets.all(26),
+              decoration: BoxDecoration(
+                borderRadius:
+                BorderRadius.circular(36),
+
+                color:
+                Colors.white.withOpacity(
+                  .78,
                 ),
 
-                const SizedBox(height: 16),
+                border: Border.all(
+                  color:
+                  Colors.white,
+                ),
 
-                /// TITLE
-                const Text(
-                  "Enjoying Downloads?",
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black
+                        .withOpacity(.06),
+                    blurRadius: 40,
+                    offset:
+                    const Offset(0, 14),
                   ),
-                ),
 
-                const SizedBox(height: 6),
+                  BoxShadow(
+                    color: const Color(
+                      0xff00E676,
+                    ).withOpacity(.18),
+                    blurRadius: 60,
+                    spreadRadius: 4,
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize:
+                MainAxisSize.min,
+                children: [
 
-                /// SUBTITLE
-                const Text(
-                  "Tap a star to rate your experience",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white70),
-                ),
-
-                const SizedBox(height: 20),
-
-                /// ⭐ STARS (ANIMATED)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(5, (index) {
-                    final isActive = index < _selectedRating;
-
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() => _selectedRating = index + 1);
-                      },
-                      child: AnimatedScale(
-                        scale: isActive ? 1.2 : 1.0,
-                        duration: const Duration(milliseconds: 200),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          child: Icon(
-                            isActive ? Icons.star : Icons.star_border,
-                            color: isActive
-                                ? Colors.yellowAccent
-                                : Colors.white30,
-                            size: 36,
+                  /// ICON
+                  AnimatedBuilder(
+                    animation: _pulse,
+                    builder: (_, child) {
+                      return Transform.scale(
+                        scale: _pulse.value,
+                        child: child,
+                      );
+                    },
+                    child: Container(
+                      width: 92,
+                      height: 92,
+                      decoration:
+                      BoxDecoration(
+                        shape:
+                        BoxShape.circle,
+                        gradient:
+                        const LinearGradient(
+                          colors: [
+                            Color(0xff00E676),
+                            Color(0xff00C853),
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(
+                              0xff00E676,
+                            ).withOpacity(.35),
+                            blurRadius: 35,
                           ),
-                        ),
+                        ],
                       ),
-                    );
-                  }),
-                ),
-
-                const SizedBox(height: 24),
-
-                /// 🔥 BUTTON SUBMIT (GRADIENT)
-                GestureDetector(
-                  onTap: _submitRating,
-                  child: Container(
-                    height: 50,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(30),
-                      gradient: const LinearGradient(
-                        colors: [Color(0xff00ffcc), Color(0xff00ccff)],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.cyanAccent.withOpacity(0.5),
-                          blurRadius: 12,
-                        ),
-                      ],
-                    ),
-                    child: const Text(
-                      "RATING",
-                      style: TextStyle(
+                      child: const Icon(
+                        Icons.download_rounded,
                         color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                        size: 46,
                       ),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 12),
-              ],
+                  const SizedBox(height: 24),
+
+                  /// TITLE
+                  ShaderMask(
+                    shaderCallback: (rect) {
+                      return const LinearGradient(
+                        colors: [
+                          Color(0xff111111),
+                          Color(0xff4B4B4B),
+                          Color(0xff00C853),
+                        ],
+                      ).createShader(rect);
+                    },
+                    child: const Text(
+                      "Enjoying Snap Video?",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight:
+                        FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: -.6,
+                        height: 1.1,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  /// DESC
+                  Text(
+                    "Your feedback helps us improve download speed, quality and overall experience.",
+                    textAlign:
+                    TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.black
+                          .withOpacity(.55),
+                      fontSize: 14,
+                      height: 1.6,
+                      fontWeight:
+                      FontWeight.w500,
+                    ),
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  /// STARS
+                  Wrap(
+                    alignment:
+                    WrapAlignment.center,
+                    spacing: 10,
+                    children: List.generate(
+                      5,
+                          (index) {
+                        final active =
+                            index <
+                                _selectedRating;
+
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _selectedRating =
+                                  index + 1;
+                            });
+                          },
+                          child:
+                          AnimatedContainer(
+                            duration:
+                            const Duration(
+                              milliseconds:
+                              220,
+                            ),
+                            curve:
+                            Curves.easeOut,
+                            width:
+                            active
+                                ? 62
+                                : 56,
+                            height:
+                            active
+                                ? 62
+                                : 56,
+                            decoration:
+                            BoxDecoration(
+                              shape:
+                              BoxShape.circle,
+                              color: active
+                                  ? const Color(
+                                0xff00E676,
+                              ).withOpacity(
+                                .14,
+                              )
+                                  : Colors.white,
+                              border:
+                              Border.all(
+                                color: active
+                                    ? const Color(
+                                  0xff00E676,
+                                )
+                                    : const Color(
+                                  0xffE9EEF5,
+                                ),
+                              ),
+                              boxShadow:
+                              [
+                                BoxShadow(
+                                  color: Colors
+                                      .black
+                                      .withOpacity(
+                                    .04,
+                                  ),
+                                  blurRadius:
+                                  16,
+                                  offset:
+                                  const Offset(
+                                    0,
+                                    6,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              active
+                                  ? Icons.star_rounded
+                                  : Icons
+                                  .star_border_rounded,
+                              color: active
+                                  ? const Color(
+                                0xff00C853,
+                              )
+                                  : Colors.black
+                                  .withOpacity(
+                                .22,
+                              ),
+                              size: 34,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  /// BUTTON
+                  GestureDetector(
+                    onTap: _submitRating,
+                    child: Container(
+                      height: 60,
+                      alignment:
+                      Alignment.center,
+                      decoration:
+                      BoxDecoration(
+                        borderRadius:
+                        BorderRadius.circular(
+                          24,
+                        ),
+                        gradient:
+                        const LinearGradient(
+                          colors: [
+                            Color(0xff111111),
+                            Color(0xff2C2C2C),
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black
+                                .withOpacity(.14),
+                            blurRadius: 28,
+                            offset:
+                            const Offset(
+                              0,
+                              10,
+                            ),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment:
+                        MainAxisAlignment
+                            .center,
+                        children: [
+                          const Icon(
+                            Icons.favorite_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+
+                          const SizedBox(
+                              width: 10),
+
+                          Text(
+                            _selectedRating >= 4
+                                ? "Rate on Play Store"
+                                : "Send Feedback",
+                            style:
+                            const TextStyle(
+                              color:
+                              Colors.white,
+                              fontWeight:
+                              FontWeight
+                                  .w900,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                ],
+              ),
             ),
           ),
         ),

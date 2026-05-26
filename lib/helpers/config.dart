@@ -30,7 +30,6 @@ class Config {
 
     // Flags
     "show_ads": true,
-    "show_ads_iOS": false,
     "show_ads_before": true,
     "checkYouTube": true,
 
@@ -89,9 +88,6 @@ class Config {
   static bool get showAds =>
       _config.getBool("show_ads");
 
-  static bool get showAdsIOS =>
-      _config.getBool("show_ads_iOS");
-
   static bool get showAdsBefore =>
       _config.getBool("show_ads_before");
 
@@ -144,6 +140,6 @@ class Config {
       _config.getString("banner_home_ad");
 
   /// ================= HELPERS =================
-  static bool get hideAds => !showAdsIOS;
+  static bool get hideAds => !showAds;
   static bool get hideAdsBefore => !showAdsBefore;
 }

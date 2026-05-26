@@ -44,7 +44,7 @@ android {
 
     defaultConfig {
         applicationId = "com.ndp.snapvideo"
-        minSdk = 23
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutterVersionCode
         versionName = flutterVersionName
