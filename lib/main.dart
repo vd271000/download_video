@@ -9,13 +9,13 @@ import 'package:download_video/share/utils/navigation_service.dart';
 
 import 'helpers/ad_helper.dart';
 import 'helpers/config.dart';
-import 'home/home_page.dart';
 
-class MyHttpOverrides extends HttpOverrides{
+class MyHttpOverrides extends HttpOverrides {
   @override
-  HttpClient createHttpClient(SecurityContext? context){
+  HttpClient createHttpClient(SecurityContext? context) {
     return super.createHttpClient(context)
-      ..badCertificateCallback = (X509Certificate cert, String host, int port)=> true;
+      ..badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
   }
 }
 
@@ -24,9 +24,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Enter full-screen (ẩn system bar)
-  await SystemChrome.setEnabledSystemUIMode(
-    SystemUiMode.immersiveSticky,
-  );
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
   //firebase initialization
   await Firebase.initializeApp();
@@ -37,8 +35,10 @@ void main() async {
   await AdHelper.initAds();
 
   //for setting orientation to portrait only
-  await SystemChrome.setPreferredOrientations(
-      [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]).then((v) {
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]).then((v) {
     runApp(const DownloadvideoApp());
   });
 }
@@ -54,12 +54,10 @@ class DownloadvideoApp extends StatelessWidget {
         FocusScope.of(context).requestFocus(FocusNode());
       },
       child: MaterialApp(
-        navigatorKey: NavigationService.navigatorKey,// set property
+        navigatorKey: NavigationService.navigatorKey, // set property
         debugShowCheckedModeBanner: false,
         color: HexColor.fromHex("#FE0000"),
-        theme: ThemeData(
-
-        ),
+        theme: ThemeData(),
         home: StartPage(),
         builder: EasyLoading.init(),
       ),

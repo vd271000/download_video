@@ -18,9 +18,7 @@ class StartPage extends StatefulWidget {
   State<StartPage> createState() => _StartPageState();
 }
 
-class _StartPageState extends State<StartPage>
-    with TickerProviderStateMixin {
-
+class _StartPageState extends State<StartPage> with TickerProviderStateMixin {
   late final AnimationController _mainController;
   late final AnimationController _floatController;
   late final AnimationController _textController;
@@ -34,83 +32,52 @@ class _StartPageState extends State<StartPage>
   Timer? _timer;
 
   /// 2026 COLORS
-  static const Color primaryGreen =
-  Color(0xff00E676);
+  static const Color primaryGreen = Color(0xff00E676);
 
-  static const Color softGreen =
-  Color(0xff00C853);
+  static const Color softGreen = Color(0xff00C853);
 
   @override
   void initState() {
     super.initState();
 
     /// preload ads
-     AdHelper.loadInterstitial();
+    AdHelper.loadInterstitial();
 
     _mainController = AnimationController(
       vsync: this,
-      duration: const Duration(
-        milliseconds: 1500,
-      ),
+      duration: const Duration(milliseconds: 1500),
     )..forward();
 
     _floatController = AnimationController(
       vsync: this,
-      duration: const Duration(
-        milliseconds: 2600,
-      ),
+      duration: const Duration(milliseconds: 2600),
     )..repeat(reverse: true);
 
     _textController = AnimationController(
       vsync: this,
-      duration: const Duration(
-        milliseconds: 900,
-      ),
+      duration: const Duration(milliseconds: 900),
     );
 
-    _logoScale = Tween<double>(
-      begin: .72,
-      end: 1,
-    ).animate(
-      CurvedAnimation(
-        parent: _mainController,
-        curve: Curves.easeOutBack,
-      ),
+    _logoScale = Tween<double>(begin: .72, end: 1).animate(
+      CurvedAnimation(parent: _mainController, curve: Curves.easeOutBack),
     );
 
-    _floatAnim = Tween<double>(
-      begin: -8,
-      end: 8,
-    ).animate(
-      CurvedAnimation(
-        parent: _floatController,
-        curve: Curves.easeInOut,
-      ),
+    _floatAnim = Tween<double>(begin: -8, end: 8).animate(
+      CurvedAnimation(parent: _floatController, curve: Curves.easeInOut),
     );
 
-    _textSlide = Tween<Offset>(
-      begin: const Offset(0, .35),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _textController,
-        curve: Curves.easeOutCubic,
-      ),
-    );
+    _textSlide = Tween<Offset>(begin: const Offset(0, .35), end: Offset.zero)
+        .animate(
+          CurvedAnimation(parent: _textController, curve: Curves.easeOutCubic),
+        );
 
-    _textFade = CurvedAnimation(
-      parent: _textController,
-      curve: Curves.easeIn,
-    );
+    _textFade = CurvedAnimation(parent: _textController, curve: Curves.easeIn);
 
-    Future.delayed(
-      const Duration(milliseconds: 450),
-          () {
-        if (mounted) {
-          _textController.forward();
-        }
-      },
-    );
+    Future.delayed(const Duration(milliseconds: 450), () {
+      if (mounted) {
+        _textController.forward();
+      }
+    });
 
     _startTimer();
   }
@@ -125,30 +92,22 @@ class _StartPageState extends State<StartPage>
   }
 
   void _startTimer() {
-    _timer = Timer(
-      const Duration(seconds: 4),
-          () {
-        if (!mounted) return;
+    _timer = Timer(const Duration(seconds: 4), () {
+      if (!mounted) return;
 
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            transitionDuration:
-            const Duration(
-              milliseconds: 700,
-            ),
-            pageBuilder:
-                (_, animation, __) {
-              return FadeTransition(
-                opacity: animation,
-                child:
-                const SplashPage(),
-              );
-            },
-          ),
-        );
-      },
-    );
+      Navigator.pushReplacement(
+        context,
+        PageRouteBuilder(
+          transitionDuration: const Duration(milliseconds: 700),
+          pageBuilder: (_, animation, __) {
+            return FadeTransition(
+              opacity: animation,
+              child: const SplashPage(),
+            );
+          },
+        ),
+      );
+    });
   }
 
   @override
@@ -157,7 +116,6 @@ class _StartPageState extends State<StartPage>
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-
           /// BACKGROUND
           const _WhiteBackground(),
 
@@ -165,229 +123,126 @@ class _StartPageState extends State<StartPage>
           Positioned(
             top: -100,
             right: -80,
-            child: _GlowCircle(
-              size: 260,
-              color: primaryGreen
-                  .withOpacity(.15),
-            ),
+            child: _GlowCircle(size: 260, color: primaryGreen.withOpacity(.15)),
           ),
 
           Positioned(
             bottom: -120,
             left: -100,
-            child: _GlowCircle(
-              size: 320,
-              color: softGreen
-                  .withOpacity(.10),
-            ),
+            child: _GlowCircle(size: 320, color: softGreen.withOpacity(.10)),
           ),
 
           /// CONTENT
           SafeArea(
             child: Center(
               child: AnimatedBuilder(
-                animation:
-                Listenable.merge([
+                animation: Listenable.merge([
                   _mainController,
                   _floatController,
                 ]),
                 builder: (_, __) {
                   return Transform.translate(
-                    offset: Offset(
-                      0,
-                      _floatAnim.value,
-                    ),
+                    offset: Offset(0, _floatAnim.value),
                     child: Padding(
-                      padding:
-                      const EdgeInsets
-                          .symmetric(
-                        horizontal: 24,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Column(
-                        mainAxisAlignment:
-                        MainAxisAlignment
-                            .center,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-
                           /// LOGO CARD
                           Transform.scale(
-                            scale:
-                            _logoScale.value,
+                            scale: _logoScale.value,
                             child: Container(
-                              padding:
-                              const EdgeInsets
-                                  .all(
-                                30,
-                              ),
-                              decoration:
-                              BoxDecoration(
-                                borderRadius:
-                                BorderRadius
-                                    .circular(
-                                  38,
-                                ),
+                              padding: const EdgeInsets.all(30),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(38),
 
                                 /// GLASS WHITE
-                                color: Colors
-                                    .white
-                                    .withOpacity(
-                                  .75,
-                                ),
+                                color: Colors.white.withOpacity(.75),
 
-                                border:
-                                Border.all(
-                                  color: Colors
-                                      .white,
+                                border: Border.all(
+                                  color: Colors.white,
                                   width: 1.5,
                                 ),
 
                                 boxShadow: [
                                   BoxShadow(
-                                    color:
-                                    primaryGreen
-                                        .withOpacity(
-                                      .18,
-                                    ),
-                                    blurRadius:
-                                    60,
-                                    spreadRadius:
-                                    6,
+                                    color: primaryGreen.withOpacity(.18),
+                                    blurRadius: 60,
+                                    spreadRadius: 6,
                                   ),
 
                                   BoxShadow(
-                                    color: Colors
-                                        .black
-                                        .withOpacity(
-                                      .06,
-                                    ),
-                                    blurRadius:
-                                    30,
-                                    offset:
-                                    const Offset(
-                                      0,
-                                      14,
-                                    ),
+                                    color: Colors.black.withOpacity(.06),
+                                    blurRadius: 30,
+                                    offset: const Offset(0, 14),
                                   ),
                                 ],
                               ),
 
                               child: ClipRRect(
-                                borderRadius:
-                                BorderRadius
-                                    .circular(
-                                  30,
-                                ),
-                                child:
-                                Image.asset(
+                                borderRadius: BorderRadius.circular(30),
+                                child: Image.asset(
                                   'assets/logo/logo.png',
                                   width: 115,
                                   height: 115,
-                                  fit:
-                                  BoxFit.cover,
+                                  fit: BoxFit.cover,
                                 ),
                               ),
                             ),
                           ),
 
-                          const SizedBox(
-                            height: 42,
-                          ),
+                          const SizedBox(height: 42),
 
                           /// TITLE
                           SlideTransition(
-                            position:
-                            _textSlide,
-                            child:
-                            FadeTransition(
-                              opacity:
-                              _textFade,
-                              child:
-                              Column(
+                            position: _textSlide,
+                            child: FadeTransition(
+                              opacity: _textFade,
+                              child: Column(
                                 children: [
-
                                   /// TITLE
                                   ShaderMask(
-                                    shaderCallback:
-                                        (bounds) {
+                                    shaderCallback: (bounds) {
                                       return const LinearGradient(
                                         colors: [
-                                          Color(
-                                            0xff111111,
-                                          ),
-                                          Color(
-                                            0xff00C853,
-                                          ),
+                                          Color(0xff111111),
+                                          Color(0xff00C853),
                                         ],
-                                      ).createShader(
-                                        bounds,
-                                      );
+                                      ).createShader(bounds);
                                     },
-                                    child:
-                                    const Text(
+                                    child: const Text(
                                       "Snap Video",
-                                      style:
-                                      TextStyle(
-                                        fontSize:
-                                        36,
-                                        fontWeight:
-                                        FontWeight
-                                            .w900,
-                                        color: Colors
-                                            .white,
-                                        letterSpacing:
-                                        -.8,
+                                      style: TextStyle(
+                                        fontSize: 36,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white,
+                                        letterSpacing: -.8,
                                       ),
                                     ),
                                   ),
 
-                                  const SizedBox(
-                                    height: 16,
-                                  ),
+                                  const SizedBox(height: 16),
 
                                   /// SUBTITLE CHIP
                                   Container(
-                                    padding:
-                                    const EdgeInsets.symmetric(
-                                      horizontal:
-                                      18,
-                                      vertical:
-                                      10,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 18,
+                                      vertical: 10,
                                     ),
-                                    decoration:
-                                    BoxDecoration(
-                                      borderRadius:
-                                      BorderRadius.circular(
-                                        30,
-                                      ),
-                                      color:
-                                      Colors.white
-                                          .withOpacity(
-                                        .70,
-                                      ),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(30),
+                                      color: Colors.white.withOpacity(.70),
 
-                                      border:
-                                      Border.all(
-                                        color: Colors
-                                            .black
-                                            .withOpacity(
-                                          .04,
-                                        ),
+                                      border: Border.all(
+                                        color: Colors.black.withOpacity(.04),
                                       ),
                                     ),
-                                    child:
-                                    const Text(
-                                      "Fast • HD • No Watermark",
-                                      style:
-                                      TextStyle(
-                                        color:
-                                        Color(
-                                          0xff444444,
-                                        ),
-                                        fontSize:
-                                        13,
-                                        fontWeight:
-                                        FontWeight
-                                            .w600,
+                                    child: const Text(
+                                      "Fast • HD • Video Saver",
+                                      style: TextStyle(
+                                        color: Color(0xff444444),
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                   ),
@@ -396,29 +251,19 @@ class _StartPageState extends State<StartPage>
                             ),
                           ),
 
-                          const SizedBox(
-                            height: 58,
-                          ),
+                          const SizedBox(height: 58),
 
                           /// LOADER
                           const _WhiteModernLoader(),
 
-                          const SizedBox(
-                            height: 26,
-                          ),
+                          const SizedBox(height: 26),
 
                           Text(
                             "Preparing experience...",
                             style: TextStyle(
-                              color: Colors
-                                  .black
-                                  .withOpacity(
-                                .45,
-                              ),
+                              color: Colors.black.withOpacity(.45),
                               fontSize: 13,
-                              fontWeight:
-                              FontWeight
-                                  .w500,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
@@ -439,11 +284,9 @@ class _StartPageState extends State<StartPage>
               child: Text(
                 "2026 Edition",
                 style: TextStyle(
-                  color: Colors.black
-                      .withOpacity(.20),
+                  color: Colors.black.withOpacity(.20),
                   fontSize: 12,
-                  fontWeight:
-                  FontWeight.w700,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 1,
                 ),
               ),
@@ -457,50 +300,32 @@ class _StartPageState extends State<StartPage>
 
 /// ================= WHITE BG =================
 
-class _WhiteBackground
-    extends StatelessWidget {
+class _WhiteBackground extends StatelessWidget {
   const _WhiteBackground();
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-
         /// BASE
         Container(
-          decoration:
-          const BoxDecoration(
+          decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                Color(0xffFDFDFD),
-                Color(0xffF5F7F8),
-                Color(0xffEEF2F3),
-              ],
+              colors: [Color(0xffFDFDFD), Color(0xffF5F7F8), Color(0xffEEF2F3)],
             ),
           ),
         ),
 
         /// GRID
-        Positioned.fill(
-          child: CustomPaint(
-            painter:
-            _WhiteGridPainter(),
-          ),
-        ),
+        Positioned.fill(child: CustomPaint(painter: _WhiteGridPainter())),
 
         /// BLUR
         Positioned.fill(
           child: BackdropFilter(
-            filter: ImageFilter.blur(
-              sigmaX: 40,
-              sigmaY: 40,
-            ),
-            child: Container(
-              color: Colors.white
-                  .withOpacity(.05),
-            ),
+            filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+            child: Container(color: Colors.white.withOpacity(.05)),
           ),
         ),
       ],
@@ -510,16 +335,11 @@ class _WhiteBackground
 
 /// ================= GLOW =================
 
-class _GlowCircle
-    extends StatelessWidget {
-
+class _GlowCircle extends StatelessWidget {
   final double size;
   final Color color;
 
-  const _GlowCircle({
-    required this.size,
-    required this.color,
-  });
+  const _GlowCircle({required this.size, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -530,11 +350,7 @@ class _GlowCircle
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           boxShadow: [
-            BoxShadow(
-              color: color,
-              blurRadius: 140,
-              spreadRadius: 70,
-            ),
+            BoxShadow(color: color, blurRadius: 140, spreadRadius: 70),
           ],
         ),
       ),
@@ -544,81 +360,50 @@ class _GlowCircle
 
 /// ================= GRID =================
 
-class _WhiteGridPainter
-    extends CustomPainter {
-
+class _WhiteGridPainter extends CustomPainter {
   @override
-  void paint(
-      Canvas canvas,
-      Size size,
-      ) {
+  void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color =
-      Colors.black.withOpacity(.03)
+      ..color = Colors.black.withOpacity(.03)
       ..strokeWidth = .7;
 
     const gap = 38.0;
 
-    for (double x = 0;
-    x < size.width;
-    x += gap) {
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, size.height),
-        paint,
-      );
+    for (double x = 0; x < size.width; x += gap) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     }
 
-    for (double y = 0;
-    y < size.height;
-    y += gap) {
-      canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
-        paint,
-      );
+    for (double y = 0; y < size.height; y += gap) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
     }
   }
 
   @override
-  bool shouldRepaint(
-      covariant CustomPainter
-      oldDelegate,
-      ) {
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
     return false;
   }
 }
 
 /// ================= LOADER =================
 
-class _WhiteModernLoader
-    extends StatefulWidget {
+class _WhiteModernLoader extends StatefulWidget {
   const _WhiteModernLoader();
 
   @override
-  State<_WhiteModernLoader>
-  createState() =>
-      _WhiteModernLoaderState();
+  State<_WhiteModernLoader> createState() => _WhiteModernLoaderState();
 }
 
-class _WhiteModernLoaderState
-    extends State<
-        _WhiteModernLoader>
+class _WhiteModernLoaderState extends State<_WhiteModernLoader>
     with SingleTickerProviderStateMixin {
-
-  late final AnimationController
-  _controller;
+  late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
 
-    _controller =
-    AnimationController(
+    _controller = AnimationController(
       vsync: this,
-      duration: const Duration(
-        milliseconds: 1200,
-      ),
+      duration: const Duration(milliseconds: 1200),
     )..repeat();
   }
 
@@ -632,40 +417,23 @@ class _WhiteModernLoaderState
     return AnimatedBuilder(
       animation: _controller,
       builder: (_, __) {
-
         final delay = index * .2;
 
-        final value =
-        ((_controller.value -
-            delay) %
-            1.0);
+        final value = ((_controller.value - delay) % 1.0);
 
-        final scale =
-            .7 + (value * .5);
+        final scale = .7 + (value * .5);
 
         return Transform.scale(
           scale: scale,
           child: Container(
             width: 13,
             height: 13,
-            decoration:
-            BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color:
-              const Color(
-                0xff00E676,
-              ).withOpacity(
-                .45 +
-                    (value * .55),
-              ),
+              color: const Color(0xff00E676).withOpacity(.45 + (value * .55)),
               boxShadow: [
                 BoxShadow(
-                  color:
-                  const Color(
-                    0xff00E676,
-                  ).withOpacity(
-                    .30,
-                  ),
+                  color: const Color(0xff00E676).withOpacity(.30),
                   blurRadius: 12,
                 ),
               ],
@@ -677,19 +445,12 @@ class _WhiteModernLoaderState
   }
 
   @override
-  Widget build(
-      BuildContext context) {
+  Widget build(BuildContext context) {
     return SizedBox(
       width: 90,
       child: Row(
-        mainAxisAlignment:
-        MainAxisAlignment
-            .spaceEvenly,
-        children: [
-          _dot(0),
-          _dot(1),
-          _dot(2),
-        ],
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [_dot(0), _dot(1), _dot(2)],
       ),
     );
   }

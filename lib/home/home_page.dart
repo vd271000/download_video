@@ -12,7 +12,6 @@ import 'package:dio/dio.dart';
 import 'package:download_video/helpers/config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:http/http.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -48,6 +47,9 @@ class _HomePageState extends State<HomePage> {
   List<String> listKeys = [];
   List<String> listYoutubeKeys = [];
 
+  static const int _minimumDownloadsBeforeRating = 2;
+  static const String _headerSubtitle = "Fast • HD • Video Saver";
+
   /// ================= INIT =================
 
   @override
@@ -56,13 +58,6 @@ class _HomePageState extends State<HomePage> {
 
     listKeys = Config.listKeysRemotes;
     listYoutubeKeys = Config.listKeysYoutube;
-
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
-        _showRatingDialog();
-      }
-    });
-
   }
 
   @override
@@ -76,12 +71,16 @@ class _HomePageState extends State<HomePage> {
   Future<void> _showRatingDialog() async {
     if (!mounted) return;
 
-    final prefs =
-        await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
 
     /// Nếu đã rate 4-5 sao rồi thì không hiện nữa
-    final hasRated =
-        prefs.getBool("has_rated") ?? false;
+    final hasRated = prefs.getBool("has_rated") ?? false;
+
+    final successfulDownloads = prefs.getInt("successful_downloads") ?? 0;
+
+    if (successfulDownloads < _minimumDownloadsBeforeRating) {
+      return;
+    }
 
     if (hasRated) return;
 
@@ -95,9 +94,7 @@ class _HomePageState extends State<HomePage> {
   /// ================= HELPERS =================
 
   Future<String> getLink(String text) async {
-    final exp = RegExp(
-      r'(?:(?:https?|ftp):\/\/)?[\w/\-?=%.]+\.[\w/\-?=%.]+',
-    );
+    final exp = RegExp(r'(?:(?:https?|ftp):\/\/)?[\w/\-?=%.]+\.[\w/\-?=%.]+');
 
     final matches = exp.allMatches(text);
 
@@ -150,8 +147,7 @@ class _HomePageState extends State<HomePage> {
         if (json["code"] == 0 && json["data"] != null) {
           final data = json["data"];
 
-          if (data["play"] != null &&
-              data["play"].toString().isNotEmpty) {
+          if (data["play"] != null && data["play"].toString().isNotEmpty) {
             return json;
           }
         }
@@ -169,17 +165,14 @@ class _HomePageState extends State<HomePage> {
 
       final response = await post(
         uri,
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: {"Content-Type": "application/json"},
         body: jsonEncode({"url": url}),
       );
 
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
 
-        if (json["status"] == "success" &&
-            json["available_formats"] != null) {
+        if (json["status"] == "success" && json["available_formats"] != null) {
           return json;
         }
       }
@@ -194,8 +187,7 @@ class _HomePageState extends State<HomePage> {
     try {
       final id = extractYoutubeId(url) ?? "";
 
-      final key = listYoutubeKeys[
-      Random().nextInt(listYoutubeKeys.length)];
+      final key = listYoutubeKeys[Random().nextInt(listYoutubeKeys.length)];
 
       final uri = Uri.parse(
         "https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=$id",
@@ -205,8 +197,7 @@ class _HomePageState extends State<HomePage> {
         uri,
         headers: {
           "Content-Type": "application/json",
-          "x-rapidapi-host":
-          "ytstream-download-youtube-videos.p.rapidapi.com",
+          "x-rapidapi-host": "ytstream-download-youtube-videos.p.rapidapi.com",
           "x-rapidapi-key": key,
         },
       );
@@ -232,15 +223,9 @@ class _HomePageState extends State<HomePage> {
 
     while (attempt < maxRetries) {
       try {
-        final uri = Uri.parse(
-          "https://snap-video3.p.rapidapi.com/download",
-        );
+        final uri = Uri.parse("https://snap-video3.p.rapidapi.com/download");
 
-        final response = await post(
-          uri,
-          headers: getHeaders(),
-          body: body,
-        );
+        final response = await post(uri, headers: getHeaders(), body: body);
 
         final json = jsonDecode(response.body);
 
@@ -255,14 +240,10 @@ class _HomePageState extends State<HomePage> {
         dev.log("Retry $attempt/$maxRetries - Error: $e");
 
         if (attempt >= maxRetries) {
-          throw Exception(
-            "API failed after $maxRetries attempts",
-          );
+          throw Exception("API failed after $maxRetries attempts");
         }
 
-        await Future.delayed(
-          const Duration(milliseconds: 500),
-        );
+        await Future.delayed(const Duration(milliseconds: 500));
       }
     }
 
@@ -272,11 +253,22 @@ class _HomePageState extends State<HomePage> {
   /// ================= CLIPBOARD =================
 
   Future<void> _getClipboardText() async {
-    final data = await Clipboard.getData(
-      Clipboard.kTextPlain,
-    );
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final clipboardText = data?.text?.trim() ?? "";
 
-    link = await getLink(data?.text ?? "");
+    if (clipboardText.isEmpty) {
+      _showError("Clipboard is empty. Copy a video link first.");
+      return;
+    }
+
+    final pastedLink = await getLink(clipboardText);
+
+    if (!pastedLink.contains(".")) {
+      _showError("Clipboard does not contain a valid video link.");
+      return;
+    }
+
+    link = pastedLink;
 
     if (!mounted) return;
 
@@ -313,14 +305,9 @@ class _HomePageState extends State<HomePage> {
           final cover = data["cover"];
           final desc = data["title"] ?? "TikTok Video";
 
-          if (videoUrl != null &&
-              videoUrl.toString().isNotEmpty) {
+          if (videoUrl != null && videoUrl.toString().isNotEmpty) {
             final mediasTikTok = [
-              {
-                "url": videoUrl,
-                "quality": "hd",
-                "extension": "mp4",
-              },
+              {"url": videoUrl, "quality": "hd", "extension": "mp4"},
             ];
 
             if (!mounted) return;
@@ -346,8 +333,7 @@ class _HomePageState extends State<HomePage> {
 
       /// ================= FACEBOOK =================
 
-      if (link.contains("facebook.com") ||
-          link.contains("fb.watch")) {
+      if (link.contains("facebook.com") || link.contains("fb.watch")) {
         setState(() {
           textLoading = "Facebook...";
           isLoading = true;
@@ -358,23 +344,14 @@ class _HomePageState extends State<HomePage> {
         if (fbJson != null) {
           final info = fbJson["video_info"];
 
-          final formats =
-          fbJson["available_formats"] as List;
+          final formats = fbJson["available_formats"] as List;
 
           formats.sort((a, b) {
-            final qa = int.tryParse(
-              a["quality"]
-                  .toString()
-                  .replaceAll("p", ""),
-            ) ??
-                0;
+            final qa =
+                int.tryParse(a["quality"].toString().replaceAll("p", "")) ?? 0;
 
-            final qb = int.tryParse(
-              b["quality"]
-                  .toString()
-                  .replaceAll("p", ""),
-            ) ??
-                0;
+            final qb =
+                int.tryParse(b["quality"].toString().replaceAll("p", "")) ?? 0;
 
             return qb.compareTo(qa);
           });
@@ -411,8 +388,7 @@ class _HomePageState extends State<HomePage> {
 
       /// ================= YOUTUBE =================
 
-      if (link.contains("youtube") ||
-          link.contains("youtu")) {
+      if (link.contains("youtube") || link.contains("youtu")) {
         if (Config.checkYouTube == true) {
           _showError("Cannot get Youtube video !");
           return;
@@ -423,12 +399,10 @@ class _HomePageState extends State<HomePage> {
           isLoading = true;
         });
 
-        final youtubeJson =
-        await fetchYoutubeAPI(link);
+        final youtubeJson = await fetchYoutubeAPI(link);
 
         if (youtubeJson != null) {
-          final thumbnail =
-          youtubeJson["thumbnail"] as List<dynamic>;
+          final thumbnail = youtubeJson["thumbnail"] as List<dynamic>;
 
           String cover = "";
 
@@ -436,17 +410,13 @@ class _HomePageState extends State<HomePage> {
             cover = thumbnail.last["url"];
           }
 
-          final desc =
-              youtubeJson["title"] ?? "Youtube Video";
+          final desc = youtubeJson["title"] ?? "Youtube Video";
 
           final adaptiveFormats =
-          youtubeJson["adaptiveFormats"]
-          as List<dynamic>;
+              youtubeJson["adaptiveFormats"] as List<dynamic>;
 
-          final mp4Videos =
-          adaptiveFormats.where((item) {
-            final mimeType =
-                item["mimeType"] ?? "";
+          final mp4Videos = adaptiveFormats.where((item) {
+            final mimeType = item["mimeType"] ?? "";
 
             return mimeType.contains("video/mp4");
           }).toList();
@@ -459,11 +429,7 @@ class _HomePageState extends State<HomePage> {
 
           if (videoUrl.isNotEmpty) {
             final mediasYoutube = [
-              {
-                "url": videoUrl,
-                "quality": "hd",
-                "extension": "mp4",
-              },
+              {"url": videoUrl, "quality": "hd", "extension": "mp4"},
             ];
 
             if (!mounted) return;
@@ -494,9 +460,7 @@ class _HomePageState extends State<HomePage> {
         isLoading = true;
       });
 
-      final jsons = await postAPI({
-        "url": link,
-      });
+      final jsons = await postAPI({"url": link});
 
       if (jsons.isEmpty || jsons["medias"] == null) {
         throw Exception("Invalid response");
@@ -506,8 +470,7 @@ class _HomePageState extends State<HomePage> {
 
       final filtered = mediasRaw.where((e) {
         return e["extension"] == "mp4" &&
-            (e["quality"] == "hd" ||
-                e["quality"] == "720p");
+            (e["quality"] == "hd" || e["quality"] == "720p");
       }).toList();
 
       if (!mounted) return;
@@ -554,8 +517,10 @@ class _HomePageState extends State<HomePage> {
 
     final dio = Dio();
 
-    final path =
-        "/storage/emulated/0/Download/${DateTime.now().millisecondsSinceEpoch}.mp4";
+    final fileName = "${DateTime.now().millisecondsSinceEpoch}.mp4";
+    final path = Platform.isIOS
+        ? "${Directory.systemTemp.path}/$fileName"
+        : "/storage/emulated/0/Download/$fileName";
 
     try {
       await dio.download(
@@ -576,6 +541,7 @@ class _HomePageState extends State<HomePage> {
 
       if (!mounted) return;
 
+      await _recordSuccessfulDownload();
       _showRatingDialog();
 
       Flushbar(
@@ -583,19 +549,15 @@ class _HomePageState extends State<HomePage> {
         borderRadius: BorderRadius.circular(16),
         backgroundColor: const Color(0xff00C853),
         duration: const Duration(seconds: 2),
-        icon: const Icon(
-          Icons.check_circle,
-          color: Colors.white,
-        ),
+        icon: const Icon(Icons.check_circle, color: Colors.white),
         messageText: const Text(
-          "Downloaded Successfully 🎉",
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          "Downloaded Successfully",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ).show(context);
-    } catch (_) {
+    } catch (e) {
+      dev.log("Download error: $e");
+
       if (!mounted) return;
 
       Flushbar(
@@ -603,16 +565,10 @@ class _HomePageState extends State<HomePage> {
         borderRadius: BorderRadius.circular(16),
         backgroundColor: Colors.redAccent,
         duration: const Duration(seconds: 2),
-        icon: const Icon(
-          Icons.error,
-          color: Colors.white,
-        ),
+        icon: const Icon(Icons.error, color: Colors.white),
         messageText: const Text(
-          "Download Failed ❌",
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          "Download Failed",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ).show(context);
     }
@@ -631,16 +587,10 @@ class _HomePageState extends State<HomePage> {
       margin: const EdgeInsets.all(16),
       borderRadius: BorderRadius.circular(16),
       backgroundGradient: const LinearGradient(
-        colors: [
-          Colors.redAccent,
-          Colors.deepOrange,
-        ],
+        colors: [Colors.redAccent, Colors.deepOrange],
       ),
       duration: const Duration(seconds: 2),
-      icon: const Icon(
-        Icons.error,
-        color: Colors.white,
-      ),
+      icon: const Icon(Icons.error, color: Colors.white),
       messageText: Text(
         msg,
         style: const TextStyle(
@@ -649,6 +599,12 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     ).show(context);
+  }
+
+  Future<void> _recordSuccessfulDownload() async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getInt("successful_downloads") ?? 0;
+    await prefs.setInt("successful_downloads", current + 1);
   }
 
   /// ================= BUILD =================
@@ -671,8 +627,7 @@ class _HomePageState extends State<HomePage> {
               right: -90,
               child: _glow(
                 size: 320,
-                color: const Color(0xffB8F5D3)
-                    .withOpacity(.55),
+                color: const Color(0xffB8F5D3).withOpacity(.55),
               ),
             ),
 
@@ -681,8 +636,7 @@ class _HomePageState extends State<HomePage> {
               left: -100,
               child: _glow(
                 size: 340,
-                color: const Color(0xffD9E8FF)
-                    .withOpacity(.55),
+                color: const Color(0xffD9E8FF).withOpacity(.55),
               ),
             ),
 
@@ -695,29 +649,22 @@ class _HomePageState extends State<HomePage> {
 
                   Expanded(
                     child: AnimatedSwitcher(
-                      duration: const Duration(
-                        milliseconds: 400,
-                      ),
-                      child: isEnable
-                          ? _preview()
-                          : _emptyWithAds(),
+                      duration: const Duration(milliseconds: 400),
+                      child: isEnable ? _preview() : _emptyWithAds(),
                     ),
                   ),
                 ],
               ),
             ),
 
-            if (isLoading)
-              _loadingOverlay(textLoading),
+            if (isLoading) _loadingOverlay(textLoading),
 
-            if (isDownloading)
-              _buildLoading(),
+            if (isDownloading) _buildLoading(),
           ],
         ),
       ),
     );
   }
-
 
   /// ================= UI =================
 
@@ -728,45 +675,29 @@ class _HomePageState extends State<HomePage> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xffFFFFFF),
-              Color(0xffF8FAFD),
-              Color(0xffEEF3F9),
-            ],
+            colors: [Color(0xffFFFFFF), Color(0xffF8FAFD), Color(0xffEEF3F9)],
           ),
         ),
       ),
 
-      Positioned.fill(
-        child: CustomPaint(
-          painter: _GridPainter(),
-        ),
-      ),
+      Positioned.fill(child: CustomPaint(painter: _GridPainter())),
 
       Positioned.fill(
         child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: 24,
-            sigmaY: 24,
-          ),
-          child: Container(
-            color: Colors.white.withOpacity(.08),
-          ),
+          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+          child: Container(color: Colors.white.withOpacity(.08)),
         ),
       ),
     ],
   );
 
   Widget _header() => Padding(
-    padding:
-    const EdgeInsets.fromLTRB(20, 18, 20, 10),
+    padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
     child: Row(
-      mainAxisAlignment:
-      MainAxisAlignment.spaceBetween,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Column(
-          crossAxisAlignment:
-          CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ShaderMask(
               shaderCallback: (bounds) {
@@ -792,10 +723,9 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 4),
 
             Text(
-              "Fast • HD • No Watermark",
+              _headerSubtitle,
               style: TextStyle(
-                color:
-                Colors.black.withOpacity(.45),
+                color: Colors.black.withOpacity(.45),
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
@@ -807,37 +737,25 @@ class _HomePageState extends State<HomePage> {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) =>
-                const HistoryPage(),
-              ),
+              MaterialPageRoute(builder: (_) => const HistoryPage()),
             );
           },
           child: Container(
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              borderRadius:
-              BorderRadius.circular(18),
-              color:
-              Colors.white.withOpacity(.75),
-              border: Border.all(
-                color:
-                Colors.white,
-              ),
+              borderRadius: BorderRadius.circular(18),
+              color: Colors.white.withOpacity(.75),
+              border: Border.all(color: Colors.white),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black
-                      .withOpacity(.05),
+                  color: Colors.black.withOpacity(.05),
                   blurRadius: 20,
                   offset: const Offset(0, 8),
                 ),
               ],
             ),
-            child: const Icon(
-              Icons.history_rounded,
-              color: Color(0xff111111),
-            ),
+            child: const Icon(Icons.history_rounded, color: Color(0xff111111)),
           ),
         ),
       ],
@@ -845,17 +763,13 @@ class _HomePageState extends State<HomePage> {
   );
 
   Widget _search() => Container(
-    margin:
-    const EdgeInsets.symmetric(horizontal: 20),
-    padding:
-    const EdgeInsets.symmetric(horizontal: 16),
+    margin: const EdgeInsets.symmetric(horizontal: 20),
+    padding: const EdgeInsets.symmetric(horizontal: 16),
     height: 62,
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(24),
       color: Colors.white.withOpacity(.75),
-      border: Border.all(
-        color: Colors.white,
-      ),
+      border: Border.all(color: Colors.white),
       boxShadow: [
         BoxShadow(
           color: Colors.black.withOpacity(.05),
@@ -870,19 +784,12 @@ class _HomePageState extends State<HomePage> {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            borderRadius:
-            BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(14),
             gradient: const LinearGradient(
-              colors: [
-                Color(0xff00E676),
-                Color(0xff00C853),
-              ],
+              colors: [Color(0xff00E676), Color(0xff00C853)],
             ),
           ),
-          child: const Icon(
-            Icons.link_rounded,
-            color: Colors.white,
-          ),
+          child: const Icon(Icons.link_rounded, color: Colors.white),
         ),
 
         const SizedBox(width: 14),
@@ -890,25 +797,27 @@ class _HomePageState extends State<HomePage> {
         Expanded(
           child: TextField(
             controller: controller,
-            readOnly: true,
-            keyboardType: TextInputType.none,
-            enableInteractiveSelection: false,
-            showCursor: false,
-            focusNode: FocusNode(
-              canRequestFocus: false,
-            ),
+            keyboardType: TextInputType.url,
+            textInputAction: TextInputAction.done,
+            enableInteractiveSelection: true,
+            showCursor: true,
+            onChanged: (value) {
+              link = value.trim();
+              if (isEnable || medias.isNotEmpty) {
+                setState(() {
+                  isEnable = false;
+                  medias = [];
+                });
+              }
+            },
             style: const TextStyle(
               color: Color(0xff111111),
               fontSize: 15,
               fontWeight: FontWeight.w600,
             ),
             decoration: InputDecoration(
-              hintText:
-              "Paste video link here...",
-              hintStyle: TextStyle(
-                color:
-                Colors.black.withOpacity(.35),
-              ),
+              hintText: "Paste video link here...",
+              hintStyle: TextStyle(color: Colors.black.withOpacity(.35)),
               border: InputBorder.none,
             ),
           ),
@@ -917,19 +826,11 @@ class _HomePageState extends State<HomePage> {
         GestureDetector(
           onTap: _getClipboardText,
           child: Container(
-            padding:
-            const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 10,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              borderRadius:
-              BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(14),
               gradient: const LinearGradient(
-                colors: [
-                  Color(0xff111111),
-                  Color(0xff2C2C2C),
-                ],
+                colors: [Color(0xff111111), Color(0xff2C2C2C)],
               ),
             ),
             child: const Row(
@@ -961,14 +862,17 @@ class _HomePageState extends State<HomePage> {
       text: "Get Video",
       icon: Icons.download_rounded,
       onTap: () async {
-        if (link.isEmpty) return;
+        link = controller.text.trim();
 
-        final prefs =
-            await SharedPreferences.getInstance();
+        if (link.isEmpty) {
+          _showError("Please paste or enter a video link");
+          return;
+        }
+
+        final prefs = await SharedPreferences.getInstance();
 
         /// Nếu đã rate 4-5 sao rồi thì không hiện nữa
-        final hasRated =
-            prefs.getBool("has_rated") ?? false;
+        final hasRated = prefs.getBool("has_rated") ?? false;
 
         if (hasRated) {
           AdHelper.showInterstitial(() {
@@ -982,36 +886,20 @@ class _HomePageState extends State<HomePage> {
   );
 
   Widget _preview() => Padding(
-    padding:
-    const EdgeInsets.symmetric(horizontal: 20),
+    padding: const EdgeInsets.symmetric(horizontal: 20),
     child: Column(
-      crossAxisAlignment:
-      CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            borderRadius:
-            BorderRadius.circular(24),
-            color:
-            Colors.white.withOpacity(.04),
-            border: Border.all(
-              color:
-              Colors.white.withOpacity(.06),
-            ),
+            borderRadius: BorderRadius.circular(24),
+            color: Colors.white.withOpacity(.04),
+            border: Border.all(color: Colors.white.withOpacity(.06)),
           ),
           child: Row(
             children: [
-              ClipRRect(
-                borderRadius:
-                BorderRadius.circular(16),
-                child: Image.network(
-                  imageLink,
-                  width: 70,
-                  height: 70,
-                  fit: BoxFit.cover,
-                ),
-              ),
+              _videoThumbnail(size: 70, borderRadius: 16),
 
               const SizedBox(width: 14),
 
@@ -1019,12 +907,10 @@ class _HomePageState extends State<HomePage> {
                 child: Text(
                   title,
                   maxLines: 2,
-                  overflow:
-                  TextOverflow.ellipsis,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.black,
-                    fontWeight:
-                    FontWeight.w700,
+                    fontWeight: FontWeight.w700,
                     fontSize: 15,
                     height: 1.4,
                   ),
@@ -1036,16 +922,13 @@ class _HomePageState extends State<HomePage> {
 
         const SizedBox(height: 12),
 
-        Expanded(
-          child: _buildVideoPreview(),
-        ),
+        Expanded(child: _buildVideoPreview()),
 
         const SizedBox(height: 12),
 
         ...medias.map(
-              (m) => Padding(
-            padding:
-            const EdgeInsets.only(bottom: 12),
+          (m) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
             child: _button(
               text: "Download HD",
               icon: Icons.download,
@@ -1054,12 +937,10 @@ class _HomePageState extends State<HomePage> {
                   isLoading = true;
                 });
 
-                final prefs =
-                    await SharedPreferences.getInstance();
+                final prefs = await SharedPreferences.getInstance();
 
                 /// Nếu đã rate 4-5 sao rồi thì không hiện nữa
-                final hasRated =
-                    prefs.getBool("has_rated") ?? false;
+                final hasRated = prefs.getBool("has_rated") ?? false;
 
                 if (hasRated) {
                   AdHelper.showInterstitial(() {
@@ -1070,6 +951,10 @@ class _HomePageState extends State<HomePage> {
                     downloadVideo(m["url"]);
                   });
                 } else {
+                  setState(() {
+                    isLoading = false;
+                  });
+
                   downloadVideo(m["url"]);
                 }
               },
@@ -1080,6 +965,35 @@ class _HomePageState extends State<HomePage> {
     ),
   );
 
+  Widget _videoThumbnail({required double size, required double borderRadius}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: imageLink.isNotEmpty
+          ? Image.network(
+              imageLink,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+            )
+          : Container(
+              width: size,
+              height: size,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xffE8FFF1), Color(0xffEAF1FF)],
+                ),
+              ),
+              child: const Icon(
+                Icons.videocam_rounded,
+                color: Color(0xff00A63E),
+                size: 42,
+              ),
+            ),
+    );
+  }
+
   Widget _buildVideoPreview() {
     return ClipRRect(
       borderRadius: BorderRadius.circular(30),
@@ -1088,10 +1002,7 @@ class _HomePageState extends State<HomePage> {
         children: [
           AspectRatio(
             aspectRatio: 1 / 1,
-            child: Image.network(
-              imageLink,
-              fit: BoxFit.cover,
-            ),
+            child: _videoThumbnail(size: double.infinity, borderRadius: 0),
           ),
 
           Positioned.fill(
@@ -1111,14 +1022,10 @@ class _HomePageState extends State<HomePage> {
 
           TweenAnimationBuilder<double>(
             tween: Tween(begin: .92, end: 1.08),
-            duration:
-            const Duration(milliseconds: 1200),
+            duration: const Duration(milliseconds: 1200),
             curve: Curves.easeInOut,
             builder: (_, scale, child) {
-              return Transform.scale(
-                scale: scale,
-                child: child,
-              );
+              return Transform.scale(scale: scale, child: child);
             },
             onEnd: () {
               if (mounted) {
@@ -1130,16 +1037,11 @@ class _HomePageState extends State<HomePage> {
               height: 92,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color:
-                Colors.white.withOpacity(.10),
-                border: Border.all(
-                  color:
-                  Colors.white.withOpacity(.15),
-                ),
+                color: Colors.white.withOpacity(.10),
+                border: Border.all(color: Colors.white.withOpacity(.15)),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xff00E676)
-                        .withOpacity(.30),
+                    color: const Color(0xff00E676).withOpacity(.30),
                     blurRadius: 40,
                   ),
                 ],
@@ -1159,12 +1061,9 @@ class _HomePageState extends State<HomePage> {
   Widget _emptyWithAds() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 28,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 28),
         child: Column(
-          mainAxisAlignment:
-          MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const SizedBox(height: 24),
 
@@ -1194,11 +1093,10 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 16),
 
             Text(
-              "Download videos instantly in ultra HD quality with blazing fast speed and zero watermark.",
+              "Download videos instantly in HD quality with a fast, smooth experience.",
               textAlign: TextAlign.center,
               style: TextStyle(
-                color:
-                Colors.black.withOpacity(.60),
+                color: Colors.black.withOpacity(.60),
                 fontSize: 14,
                 height: 1.7,
               ),
@@ -1240,7 +1138,7 @@ class _HomePageState extends State<HomePage> {
             //         ),
             //         SizedBox(width: 10),
             //         Text(
-            //           "Paste & Download",
+            //           "Paste & Save",
             //           style: TextStyle(
             //             color: Colors.white,
             //             fontWeight:
@@ -1254,15 +1152,14 @@ class _HomePageState extends State<HomePage> {
             // ),
             //
             // const SizedBox(height: 24),
-
             Wrap(
               alignment: WrapAlignment.center,
               spacing: 10,
               runSpacing: 10,
               children: [
-                _feature("No Watermark"),
-                _feature("4K HD"),
-                _feature("Ultra Fast"),
+                _feature("HD Quality"),
+                _feature("Fast Speed"),
+                _feature("Easy Save"),
               ],
             ),
           ],
@@ -1273,16 +1170,11 @@ class _HomePageState extends State<HomePage> {
 
   Widget _feature(String text) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 10,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         color: Colors.black.withOpacity(.05),
-        border: Border.all(
-          color: Colors.black.withOpacity(.06),
-        ),
+        border: Border.all(color: Colors.black.withOpacity(.06)),
       ),
       child: Text(
         text,
@@ -1308,23 +1200,18 @@ class _HomePageState extends State<HomePage> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
           gradient: const LinearGradient(
-            colors: [
-              Color(0xff00E676),
-              Color(0xff00C853),
-            ],
+            colors: [Color(0xff00E676), Color(0xff00C853)],
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xff00E676)
-                  .withOpacity(.35),
+              color: const Color(0xff00E676).withOpacity(.35),
               blurRadius: 24,
               offset: const Offset(0, 10),
             ),
           ],
         ),
         child: Row(
-          mainAxisAlignment:
-          MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, color: Colors.white),
 
@@ -1347,28 +1234,16 @@ class _HomePageState extends State<HomePage> {
   Widget _loadingOverlay(String text) {
     return Positioned.fill(
       child: BackdropFilter(
-        filter: ImageFilter.blur(
-          sigmaX: 10,
-          sigmaY: 10,
-        ),
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
           color: Colors.black.withOpacity(.45),
           child: Center(
             child: Container(
-              padding:
-              const EdgeInsets.symmetric(
-                horizontal: 30,
-                vertical: 24,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 24),
               decoration: BoxDecoration(
-                borderRadius:
-                BorderRadius.circular(28),
-                color:
-                Colors.white.withOpacity(.05),
-                border: Border.all(
-                  color:
-                  Colors.white.withOpacity(.08),
-                ),
+                borderRadius: BorderRadius.circular(28),
+                color: Colors.white.withOpacity(.05),
+                border: Border.all(color: Colors.white.withOpacity(.08)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1388,8 +1263,7 @@ class _HomePageState extends State<HomePage> {
                     text,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontWeight:
-                      FontWeight.w700,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
@@ -1404,10 +1278,7 @@ class _HomePageState extends State<HomePage> {
   Widget _buildLoading() {
     return Positioned.fill(
       child: BackdropFilter(
-        filter: ImageFilter.blur(
-          sigmaX: 12,
-          sigmaY: 12,
-        ),
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           color: Colors.black.withOpacity(.45),
           child: Center(
@@ -1415,18 +1286,12 @@ class _HomePageState extends State<HomePage> {
               width: 180,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                borderRadius:
-                BorderRadius.circular(34),
-                color:
-                Colors.white.withOpacity(.05),
-                border: Border.all(
-                  color:
-                  Colors.white.withOpacity(.08),
-                ),
+                borderRadius: BorderRadius.circular(34),
+                color: Colors.white.withOpacity(.05),
+                border: Border.all(color: Colors.white.withOpacity(.08)),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xff00E676)
-                        .withOpacity(.25),
+                    color: const Color(0xff00E676).withOpacity(.25),
                     blurRadius: 40,
                     spreadRadius: 2,
                   ),
@@ -1441,15 +1306,11 @@ class _HomePageState extends State<HomePage> {
                       SizedBox(
                         width: 82,
                         height: 82,
-                        child:
-                        CircularProgressIndicator(
+                        child: CircularProgressIndicator(
                           value: progress,
                           strokeWidth: 6,
-                          backgroundColor:
-                          Colors.white
-                              .withOpacity(.08),
-                          valueColor:
-                          const AlwaysStoppedAnimation(
+                          backgroundColor: Colors.white.withOpacity(.08),
+                          valueColor: const AlwaysStoppedAnimation(
                             Color(0xff00E676),
                           ),
                         ),
@@ -1459,8 +1320,7 @@ class _HomePageState extends State<HomePage> {
                         "${(progress * 100).toInt()}%",
                         style: const TextStyle(
                           color: Colors.white,
-                          fontWeight:
-                          FontWeight.w900,
+                          fontWeight: FontWeight.w900,
                           fontSize: 18,
                         ),
                       ),
@@ -1473,8 +1333,7 @@ class _HomePageState extends State<HomePage> {
                     "Downloading...",
                     style: TextStyle(
                       color: Colors.white,
-                      fontWeight:
-                      FontWeight.w800,
+                      fontWeight: FontWeight.w800,
                       fontSize: 16,
                     ),
                   ),
@@ -1482,13 +1341,10 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 10),
 
                   Text(
-                    "Preparing ultra fast download",
+                    "Preparing fast download",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color:
-                      Colors.white.withOpacity(
-                        .55,
-                      ),
+                      color: Colors.white.withOpacity(.55),
                       fontSize: 13,
                     ),
                   ),
@@ -1496,16 +1352,12 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 18),
 
                   ClipRRect(
-                    borderRadius:
-                    BorderRadius.circular(30),
+                    borderRadius: BorderRadius.circular(30),
                     child: LinearProgressIndicator(
                       value: progress,
                       minHeight: 8,
-                      backgroundColor:
-                      Colors.white
-                          .withOpacity(.06),
-                      valueColor:
-                      const AlwaysStoppedAnimation(
+                      backgroundColor: Colors.white.withOpacity(.06),
+                      valueColor: const AlwaysStoppedAnimation(
                         Color(0xff00E676),
                       ),
                     ),
@@ -1519,10 +1371,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _glow({
-    required double size,
-    required Color color,
-  }) {
+  Widget _glow({required double size, required Color color}) {
     return IgnorePointer(
       child: Container(
         width: size,
@@ -1530,11 +1379,7 @@ class _HomePageState extends State<HomePage> {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           boxShadow: [
-            BoxShadow(
-              color: color,
-              blurRadius: 150,
-              spreadRadius: 80,
-            ),
+            BoxShadow(color: color, blurRadius: 150, spreadRadius: 80),
           ],
         ),
       ),
@@ -1554,26 +1399,16 @@ class _GridPainter extends CustomPainter {
     const gap = 38.0;
 
     for (double x = 0; x < size.width; x += gap) {
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, size.height),
-        paint,
-      );
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     }
 
     for (double y = 0; y < size.height; y += gap) {
-      canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
-        paint,
-      );
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
     }
   }
 
   @override
-  bool shouldRepaint(
-      covariant CustomPainter oldDelegate,
-      ) {
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
     return false;
   }
 }
@@ -1581,19 +1416,13 @@ class _GridPainter extends CustomPainter {
 /// ================= GALLERY =================
 
 class GallerySaverUtil {
-  static const MethodChannel _channel =
-  MethodChannel(
+  static const MethodChannel _channel = MethodChannel(
     "com.example.save_video/gallery",
   );
 
-  static Future<void> saveVideoToGallery(
-      String path,
-      ) async {
-    if (Platform.isAndroid) {
-      await _channel.invokeMethod(
-        "saveVideoToGallery",
-        {"path": path},
-      );
+  static Future<void> saveVideoToGallery(String path) async {
+    if (Platform.isAndroid || Platform.isIOS) {
+      await _channel.invokeMethod("saveVideoToGallery", {"path": path});
     }
   }
 }
@@ -1602,21 +1431,16 @@ class CustomRatingDialog extends StatefulWidget {
   const CustomRatingDialog({super.key});
 
   @override
-  State<CustomRatingDialog> createState() =>
-      _CustomRatingDialogState();
+  State<CustomRatingDialog> createState() => _CustomRatingDialogState();
 }
 
-class _CustomRatingDialogState
-    extends State<CustomRatingDialog>
+class _CustomRatingDialogState extends State<CustomRatingDialog>
     with TickerProviderStateMixin {
-
   int _selectedRating = 5;
 
-  final InAppReview _inAppReview =
-      InAppReview.instance;
+  final InAppReview _inAppReview = InAppReview.instance;
 
-  late final AnimationController
-  _pulseController;
+  late final AnimationController _pulseController;
 
   late final Animation<double> _pulse;
 
@@ -1626,19 +1450,11 @@ class _CustomRatingDialogState
 
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(
-        milliseconds: 1600,
-      ),
+      duration: const Duration(milliseconds: 1600),
     )..repeat(reverse: true);
 
-    _pulse = Tween<double>(
-      begin: .96,
-      end: 1.04,
-    ).animate(
-      CurvedAnimation(
-        parent: _pulseController,
-        curve: Curves.easeInOut,
-      ),
+    _pulse = Tween<double>(begin: .96, end: 1.04).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
   }
 
@@ -1653,14 +1469,10 @@ class _CustomRatingDialogState
 
     if (_selectedRating >= 4) {
       try {
-        final prefs =
-        await SharedPreferences.getInstance();
+        final prefs = await SharedPreferences.getInstance();
 
         /// Đánh dấu đã rate hài lòng
-        await prefs.setBool(
-          "has_rated",
-          true,
-        );
+        await prefs.setBool("has_rated", true);
 
         if (await _inAppReview.isAvailable()) {
           await _inAppReview.requestReview();
@@ -1669,24 +1481,18 @@ class _CustomRatingDialogState
         }
       } catch (e) {
         await launchUrl(
-          Uri.parse(
-            "https://play.google.com/store/apps/details?id=com.ndp.snapvideo",
-          ),
+          Uri.parse("https://apps.apple.com/app/id6762542855"),
           mode: LaunchMode.externalApplication,
         );
       }
 
       if (!mounted) return;
 
-      _showSnack(
-        "Thanks for supporting Snap Video ❤️",
-      );
+      _showSnack("Thanks for supporting Snap Video");
     } else {
       if (!mounted) return;
 
-      _showSnack(
-        "Thanks! We'll improve your experience 🚀",
-      );
+      _showSnack("Thanks! We'll improve your experience");
     }
   }
 
@@ -1694,12 +1500,8 @@ class _CustomRatingDialogState
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
-        backgroundColor:
-        const Color(0xff111111),
-        shape: RoundedRectangleBorder(
-          borderRadius:
-          BorderRadius.circular(18),
-        ),
+        backgroundColor: const Color(0xff111111),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         content: Text(
           text,
           style: const TextStyle(
@@ -1715,98 +1517,61 @@ class _CustomRatingDialogState
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding:
-      const EdgeInsets.symmetric(
-        horizontal: 22,
-      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 22),
       child: TweenAnimationBuilder<double>(
         tween: Tween(begin: .9, end: 1),
-        duration: const Duration(
-          milliseconds: 450,
-        ),
+        duration: const Duration(milliseconds: 450),
         curve: Curves.easeOutBack,
         builder: (_, scale, child) {
-          return Transform.scale(
-            scale: scale,
-            child: child,
-          );
+          return Transform.scale(scale: scale, child: child);
         },
         child: ClipRRect(
-          borderRadius:
-          BorderRadius.circular(36),
+          borderRadius: BorderRadius.circular(36),
           child: BackdropFilter(
-            filter: ImageFilter.blur(
-              sigmaX: 30,
-              sigmaY: 30,
-            ),
+            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
             child: Container(
-              padding:
-              const EdgeInsets.all(26),
+              padding: const EdgeInsets.all(26),
               decoration: BoxDecoration(
-                borderRadius:
-                BorderRadius.circular(36),
+                borderRadius: BorderRadius.circular(36),
 
-                color:
-                Colors.white.withOpacity(
-                  .78,
-                ),
+                color: Colors.white.withOpacity(.78),
 
-                border: Border.all(
-                  color:
-                  Colors.white,
-                ),
+                border: Border.all(color: Colors.white),
 
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black
-                        .withOpacity(.06),
+                    color: Colors.black.withOpacity(.06),
                     blurRadius: 40,
-                    offset:
-                    const Offset(0, 14),
+                    offset: const Offset(0, 14),
                   ),
 
                   BoxShadow(
-                    color: const Color(
-                      0xff00E676,
-                    ).withOpacity(.18),
+                    color: const Color(0xff00E676).withOpacity(.18),
                     blurRadius: 60,
                     spreadRadius: 4,
                   ),
                 ],
               ),
               child: Column(
-                mainAxisSize:
-                MainAxisSize.min,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-
                   /// ICON
                   AnimatedBuilder(
                     animation: _pulse,
                     builder: (_, child) {
-                      return Transform.scale(
-                        scale: _pulse.value,
-                        child: child,
-                      );
+                      return Transform.scale(scale: _pulse.value, child: child);
                     },
                     child: Container(
                       width: 92,
                       height: 92,
-                      decoration:
-                      BoxDecoration(
-                        shape:
-                        BoxShape.circle,
-                        gradient:
-                        const LinearGradient(
-                          colors: [
-                            Color(0xff00E676),
-                            Color(0xff00C853),
-                          ],
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          colors: [Color(0xff00E676), Color(0xff00C853)],
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(
-                              0xff00E676,
-                            ).withOpacity(.35),
+                            color: const Color(0xff00E676).withOpacity(.35),
                             blurRadius: 35,
                           ),
                         ],
@@ -1837,8 +1602,7 @@ class _CustomRatingDialogState
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 28,
-                        fontWeight:
-                        FontWeight.w900,
+                        fontWeight: FontWeight.w900,
                         color: Colors.white,
                         letterSpacing: -.6,
                         height: 1.1,
@@ -1850,16 +1614,13 @@ class _CustomRatingDialogState
 
                   /// DESC
                   Text(
-                    "Your feedback helps us improve download speed, quality and overall experience.",
-                    textAlign:
-                    TextAlign.center,
+                    "Your feedback helps us improve quality and overall experience.",
+                    textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.black
-                          .withOpacity(.55),
+                      color: Colors.black.withOpacity(.55),
                       fontSize: 14,
                       height: 1.6,
-                      fontWeight:
-                      FontWeight.w500,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
 
@@ -1867,98 +1628,52 @@ class _CustomRatingDialogState
 
                   /// STARS
                   Wrap(
-                    alignment:
-                    WrapAlignment.center,
+                    alignment: WrapAlignment.center,
                     spacing: 10,
-                    children: List.generate(
-                      5,
-                          (index) {
-                        final active =
-                            index <
-                                _selectedRating;
+                    children: List.generate(5, (index) {
+                      final active = index < _selectedRating;
 
-                        return GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _selectedRating =
-                                  index + 1;
-                            });
-                          },
-                          child:
-                          AnimatedContainer(
-                            duration:
-                            const Duration(
-                              milliseconds:
-                              220,
-                            ),
-                            curve:
-                            Curves.easeOut,
-                            width:
-                            active
-                                ? 62
-                                : 56,
-                            height:
-                            active
-                                ? 62
-                                : 56,
-                            decoration:
-                            BoxDecoration(
-                              shape:
-                              BoxShape.circle,
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedRating = index + 1;
+                          });
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOut,
+                          width: active ? 62 : 56,
+                          height: active ? 62 : 56,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: active
+                                ? const Color(0xff00E676).withOpacity(.14)
+                                : Colors.white,
+                            border: Border.all(
                               color: active
-                                  ? const Color(
-                                0xff00E676,
-                              ).withOpacity(
-                                .14,
-                              )
-                                  : Colors.white,
-                              border:
-                              Border.all(
-                                color: active
-                                    ? const Color(
-                                  0xff00E676,
-                                )
-                                    : const Color(
-                                  0xffE9EEF5,
-                                ),
-                              ),
-                              boxShadow:
-                              [
-                                BoxShadow(
-                                  color: Colors
-                                      .black
-                                      .withOpacity(
-                                    .04,
-                                  ),
-                                  blurRadius:
-                                  16,
-                                  offset:
-                                  const Offset(
-                                    0,
-                                    6,
-                                  ),
-                                ),
-                              ],
+                                  ? const Color(0xff00E676)
+                                  : const Color(0xffE9EEF5),
                             ),
-                            child: Icon(
-                              active
-                                  ? Icons.star_rounded
-                                  : Icons
-                                  .star_border_rounded,
-                              color: active
-                                  ? const Color(
-                                0xff00C853,
-                              )
-                                  : Colors.black
-                                  .withOpacity(
-                                .22,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(.04),
+                                blurRadius: 16,
+                                offset: const Offset(0, 6),
                               ),
-                              size: 34,
-                            ),
+                            ],
                           ),
-                        );
-                      },
-                    ),
+                          child: Icon(
+                            active
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
+                            color: active
+                                ? const Color(0xff00C853)
+                                : Colors.black.withOpacity(.22),
+                            size: 34,
+                          ),
+                        ),
+                      );
+                    }),
                   ),
 
                   const SizedBox(height: 32),
@@ -1968,38 +1683,22 @@ class _CustomRatingDialogState
                     onTap: _submitRating,
                     child: Container(
                       height: 60,
-                      alignment:
-                      Alignment.center,
-                      decoration:
-                      BoxDecoration(
-                        borderRadius:
-                        BorderRadius.circular(
-                          24,
-                        ),
-                        gradient:
-                        const LinearGradient(
-                          colors: [
-                            Color(0xff111111),
-                            Color(0xff2C2C2C),
-                          ],
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xff111111), Color(0xff2C2C2C)],
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black
-                                .withOpacity(.14),
+                            color: Colors.black.withOpacity(.14),
                             blurRadius: 28,
-                            offset:
-                            const Offset(
-                              0,
-                              10,
-                            ),
+                            offset: const Offset(0, 10),
                           ),
                         ],
                       ),
                       child: Row(
-                        mainAxisAlignment:
-                        MainAxisAlignment
-                            .center,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Icon(
                             Icons.favorite_rounded,
@@ -2007,20 +1706,15 @@ class _CustomRatingDialogState
                             size: 22,
                           ),
 
-                          const SizedBox(
-                              width: 10),
+                          const SizedBox(width: 10),
 
                           Text(
                             _selectedRating >= 4
-                                ? "Rate on Play Store"
+                                ? "Rate on App Store"
                                 : "Send Feedback",
-                            style:
-                            const TextStyle(
-                              color:
-                              Colors.white,
-                              fontWeight:
-                              FontWeight
-                                  .w900,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
                               fontSize: 16,
                             ),
                           ),
@@ -2030,7 +1724,6 @@ class _CustomRatingDialogState
                   ),
 
                   const SizedBox(height: 12),
-
                 ],
               ),
             ),

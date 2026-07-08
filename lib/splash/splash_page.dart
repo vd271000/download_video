@@ -15,9 +15,7 @@ class SplashPage extends StatefulWidget {
   State<SplashPage> createState() => _SplashPageState();
 }
 
-class _SplashPageState extends State<SplashPage>
-    with TickerProviderStateMixin {
-
+class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   late final AnimationController _mainController;
   late final AnimationController _progressController;
   late final AnimationController _floatingController;
@@ -62,34 +60,16 @@ class _SplashPageState extends State<SplashPage>
       duration: const Duration(seconds: 3),
     )..forward();
 
-    _logoScale = Tween<double>(
-      begin: 0.72,
-      end: 1,
-    ).animate(
-      CurvedAnimation(
-        parent: _mainController,
-        curve: Curves.easeOutBack,
-      ),
+    _logoScale = Tween<double>(begin: 0.72, end: 1).animate(
+      CurvedAnimation(parent: _mainController, curve: Curves.easeOutBack),
     );
 
-    _logoGlow = Tween<double>(
-      begin: 0,
-      end: 1,
-    ).animate(
-      CurvedAnimation(
-        parent: _mainController,
-        curve: Curves.easeInOut,
-      ),
+    _logoGlow = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _mainController, curve: Curves.easeInOut),
     );
 
-    _floating = Tween<double>(
-      begin: -10,
-      end: 10,
-    ).animate(
-      CurvedAnimation(
-        parent: _floatingController,
-        curve: Curves.easeInOut,
-      ),
+    _floating = Tween<double>(begin: -10, end: 10).animate(
+      CurvedAnimation(parent: _floatingController, curve: Curves.easeInOut),
     );
 
     _progress = CurvedAnimation(
@@ -118,67 +98,51 @@ class _SplashPageState extends State<SplashPage>
 
   /// TIMER
   void _startTimer() {
-    _timer = Timer(
-      const Duration(milliseconds: 250),
-          () async {
-        if (!mounted) return;
+    _timer = Timer(const Duration(milliseconds: 250), () async {
+      if (!mounted) return;
 
-        final prefs =
-            await SharedPreferences.getInstance();
+      final prefs = await SharedPreferences.getInstance();
 
-        /// Nếu đã rate 4-5 sao rồi thì không hiện nữa
-        final hasRated =
-            prefs.getBool("has_rated") ?? false;
+      /// Nếu đã rate 4-5 sao rồi thì không hiện nữa
+      final hasRated = prefs.getBool("has_rated") ?? false;
 
-        dev.log("has_rated ${hasRated}");
+      dev.log("has_rated ${hasRated}");
 
-        if (hasRated) {
-          AdHelper.showInterstitial(() {
-            Navigator.pushReplacement(
-              context,
-              PageRouteBuilder(
-                transitionDuration:
-                const Duration(milliseconds: 700),
-                pageBuilder:
-                    (_, animation, __) {
-                  return FadeTransition(
-                    opacity: animation,
-                    child: HomePage(),
-                  );
-                },
-              ),
-            );
-          });
-        } else {
+      if (hasRated) {
+        AdHelper.showInterstitial(() {
           Navigator.pushReplacement(
             context,
             PageRouteBuilder(
-              transitionDuration:
-              const Duration(milliseconds: 700),
-              pageBuilder:
-                  (_, animation, __) {
-                return FadeTransition(
-                  opacity: animation,
-                  child: HomePage(),
-                );
+              transitionDuration: const Duration(milliseconds: 700),
+              pageBuilder: (_, animation, __) {
+                return FadeTransition(opacity: animation, child: HomePage());
               },
             ),
           );
-        };
-      },
-    );
+        });
+      } else {
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            transitionDuration: const Duration(milliseconds: 700),
+            pageBuilder: (_, animation, __) {
+              return FadeTransition(opacity: animation, child: HomePage());
+            },
+          ),
+        );
+      }
+      ;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final bottomSafe =
-        MediaQuery.of(context).padding.bottom;
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-
           /// BACKGROUND
           AnimatedBuilder(
             animation: _rotateController,
@@ -191,20 +155,14 @@ class _SplashPageState extends State<SplashPage>
           Positioned(
             top: -120,
             right: -100,
-            child: _GlowCircle(
-              size: 320,
-              color: primaryGreen.withOpacity(.14),
-            ),
+            child: _GlowCircle(size: 320, color: primaryGreen.withOpacity(.14)),
           ),
 
           /// BOTTOM GLOW
           Positioned(
             bottom: -160,
             left: -100,
-            child: _GlowCircle(
-              size: 360,
-              color: softGreen.withOpacity(.10),
-            ),
+            child: _GlowCircle(size: 360, color: softGreen.withOpacity(.10)),
           ),
 
           /// CONTENT
@@ -217,48 +175,30 @@ class _SplashPageState extends State<SplashPage>
                 ]),
                 builder: (_, __) {
                   return Transform.translate(
-                    offset: Offset(
-                      0,
-                      _floating.value,
-                    ),
+                    offset: Offset(0, _floating.value),
                     child: Padding(
-                      padding:
-                      const EdgeInsets.symmetric(
-                        horizontal: 24,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Column(
-                        mainAxisAlignment:
-                        MainAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-
                           /// LOGO WRAPPER
                           Transform.scale(
-                            scale:
-                            _logoScale.value,
+                            scale: _logoScale.value,
                             child: Stack(
-                              alignment:
-                              Alignment.center,
+                              alignment: Alignment.center,
                               children: [
-
                                 /// OUTER GLOW
                                 Container(
                                   width: 210,
                                   height: 210,
-                                  decoration:
-                                  BoxDecoration(
-                                    shape:
-                                    BoxShape.circle,
-                                    gradient:
-                                    RadialGradient(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: RadialGradient(
                                       colors: [
-                                        primaryGreen
-                                            .withOpacity(
-                                          .18 *
-                                              _logoGlow
-                                                  .value,
+                                        primaryGreen.withOpacity(
+                                          .18 * _logoGlow.value,
                                         ),
-                                        Colors
-                                            .transparent,
+                                        Colors.transparent,
                                       ],
                                     ),
                                   ),
@@ -266,87 +206,47 @@ class _SplashPageState extends State<SplashPage>
 
                                 /// GLASS CARD
                                 ClipRRect(
-                                  borderRadius:
-                                  BorderRadius.circular(
-                                    42,
-                                  ),
-                                  child:
-                                  BackdropFilter(
-                                    filter:
-                                    ImageFilter.blur(
-                                      sigmaX:
-                                      25,
-                                      sigmaY:
-                                      25,
+                                  borderRadius: BorderRadius.circular(42),
+                                  child: BackdropFilter(
+                                    filter: ImageFilter.blur(
+                                      sigmaX: 25,
+                                      sigmaY: 25,
                                     ),
-                                    child:
-                                    Container(
-                                      padding:
-                                      const EdgeInsets.all(
-                                        28,
-                                      ),
-                                      decoration:
-                                      BoxDecoration(
-                                        borderRadius:
-                                        BorderRadius.circular(
-                                          42,
-                                        ),
-                                        color: Colors
-                                            .white
-                                            .withOpacity(
-                                          .72,
-                                        ),
-                                        border:
-                                        Border.all(
-                                          color: Colors
-                                              .white,
-                                          width:
-                                          1.4,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(28),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(42),
+                                        color: Colors.white.withOpacity(.72),
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 1.4,
                                         ),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: primaryGreen
-                                                .withOpacity(
+                                            color: primaryGreen.withOpacity(
                                               .18,
                                             ),
-                                            blurRadius:
-                                            60,
-                                            spreadRadius:
-                                            4,
+                                            blurRadius: 60,
+                                            spreadRadius: 4,
                                           ),
 
                                           BoxShadow(
-                                            color: Colors
-                                                .black
-                                                .withOpacity(
+                                            color: Colors.black.withOpacity(
                                               .06,
                                             ),
-                                            blurRadius:
-                                            30,
-                                            offset:
-                                            const Offset(
-                                              0,
-                                              12,
-                                            ),
+                                            blurRadius: 30,
+                                            offset: const Offset(0, 12),
                                           ),
                                         ],
                                       ),
 
-                                      child:
-                                      ClipRRect(
-                                        borderRadius:
-                                        BorderRadius.circular(
-                                          30,
-                                        ),
-                                        child:
-                                        Image.asset(
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(30),
+                                        child: Image.asset(
                                           'assets/logo/logo.png',
-                                          width:
-                                          120,
-                                          height:
-                                          120,
-                                          fit: BoxFit
-                                              .cover,
+                                          width: 120,
+                                          height: 120,
+                                          fit: BoxFit.cover,
                                         ),
                                       ),
                                     ),
@@ -356,90 +256,53 @@ class _SplashPageState extends State<SplashPage>
                             ),
                           ),
 
-                          const SizedBox(
-                            height: 42,
-                          ),
+                          const SizedBox(height: 42),
 
                           /// TITLE
                           ShaderMask(
-                            shaderCallback:
-                                (bounds) {
+                            shaderCallback: (bounds) {
                               return const LinearGradient(
-                                colors: [
-                                  Color(
-                                    0xff111111,
-                                  ),
-                                  Color(
-                                    0xff00C853,
-                                  ),
-                                ],
-                              ).createShader(
-                                bounds,
-                              );
+                                colors: [Color(0xff111111), Color(0xff00C853)],
+                              ).createShader(bounds);
                             },
                             child: const Text(
                               "Snap Video",
                               style: TextStyle(
                                 fontSize: 38,
-                                fontWeight:
-                                FontWeight
-                                    .w900,
-                                color:
-                                Colors.white,
-                                letterSpacing:
-                                -.8,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: -.8,
                               ),
                             ),
                           ),
 
-                          const SizedBox(
-                            height: 16,
-                          ),
+                          const SizedBox(height: 16),
 
                           /// SUBTITLE CHIP
                           Container(
-                            padding:
-                            const EdgeInsets.symmetric(
+                            padding: const EdgeInsets.symmetric(
                               horizontal: 18,
                               vertical: 10,
                             ),
-                            decoration:
-                            BoxDecoration(
-                              borderRadius:
-                              BorderRadius.circular(
-                                30,
-                              ),
-                              color: Colors.white
-                                  .withOpacity(
-                                .78,
-                              ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(30),
+                              color: Colors.white.withOpacity(.78),
                               border: Border.all(
-                                color: Colors
-                                    .black
-                                    .withOpacity(
-                                  .04,
-                                ),
+                                color: Colors.black.withOpacity(.04),
                               ),
                             ),
                             child: const Text(
-                              "Fast • HD • No Watermark",
+                              "Fast • HD • Video Saver",
                               style: TextStyle(
-                                color: Color(
-                                  0xff444444,
-                                ),
+                                color: Color(0xff444444),
                                 fontSize: 13,
-                                fontWeight:
-                                FontWeight
-                                    .w600,
-                                letterSpacing:
-                                .3,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: .3,
                               ),
                             ),
                           ),
 
-                          const SizedBox(
-                            height: 80,
-                          ),
+                          const SizedBox(height: 80),
 
                           /// LOADING
                           const _ModernLoader(),
@@ -457,9 +320,7 @@ class _SplashPageState extends State<SplashPage>
             left: 30,
             right: 30,
             bottom: bottomSafe + 58,
-            child: _ModernProgressBar(
-              progress: _progress,
-            ),
+            child: _ModernProgressBar(progress: _progress),
           ),
 
           /// VERSION
@@ -471,11 +332,9 @@ class _SplashPageState extends State<SplashPage>
               child: Text(
                 "2026 Edition",
                 style: TextStyle(
-                  color: Colors.black
-                      .withOpacity(.22),
+                  color: Colors.black.withOpacity(.22),
                   fontSize: 12,
-                  fontWeight:
-                  FontWeight.w700,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 1,
                 ),
               ),
@@ -489,53 +348,32 @@ class _SplashPageState extends State<SplashPage>
 
 /// ================= BACKGROUND =================
 
-class _WhiteBackground
-    extends StatelessWidget {
-
+class _WhiteBackground extends StatelessWidget {
   const _WhiteBackground();
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-
         /// BASE
         Container(
-          decoration:
-          const BoxDecoration(
+          decoration: const BoxDecoration(
             gradient: LinearGradient(
-              begin:
-              Alignment.topCenter,
-              end:
-              Alignment.bottomCenter,
-              colors: [
-                Color(0xffFFFFFF),
-                Color(0xffF7F9FA),
-                Color(0xffEEF2F3),
-              ],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xffFFFFFF), Color(0xffF7F9FA), Color(0xffEEF2F3)],
             ),
           ),
         ),
 
         /// GRID
-        Positioned.fill(
-          child: CustomPaint(
-            painter:
-            _GridPainter(),
-          ),
-        ),
+        Positioned.fill(child: CustomPaint(painter: _GridPainter())),
 
         /// BLUR
         Positioned.fill(
           child: BackdropFilter(
-            filter: ImageFilter.blur(
-              sigmaX: 40,
-              sigmaY: 40,
-            ),
-            child: Container(
-              color: Colors.white
-                  .withOpacity(.02),
-            ),
+            filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+            child: Container(color: Colors.white.withOpacity(.02)),
           ),
         ),
       ],
@@ -545,63 +383,37 @@ class _WhiteBackground
 
 /// ================= GRID =================
 
-class _GridPainter
-    extends CustomPainter {
-
+class _GridPainter extends CustomPainter {
   @override
-  void paint(
-      Canvas canvas,
-      Size size,
-      ) {
+  void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color =
-      Colors.black.withOpacity(.03)
+      ..color = Colors.black.withOpacity(.03)
       ..strokeWidth = .7;
 
     const gap = 40.0;
 
-    for (double x = 0;
-    x < size.width;
-    x += gap) {
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, size.height),
-        paint,
-      );
+    for (double x = 0; x < size.width; x += gap) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     }
 
-    for (double y = 0;
-    y < size.height;
-    y += gap) {
-      canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
-        paint,
-      );
+    for (double y = 0; y < size.height; y += gap) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
     }
   }
 
   @override
-  bool shouldRepaint(
-      covariant CustomPainter
-      oldDelegate,
-      ) {
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
     return false;
   }
 }
 
 /// ================= GLOW =================
 
-class _GlowCircle
-    extends StatelessWidget {
-
+class _GlowCircle extends StatelessWidget {
   final double size;
   final Color color;
 
-  const _GlowCircle({
-    required this.size,
-    required this.color,
-  });
+  const _GlowCircle({required this.size, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -612,11 +424,7 @@ class _GlowCircle
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           boxShadow: [
-            BoxShadow(
-              color: color,
-              blurRadius: 160,
-              spreadRadius: 90,
-            ),
+            BoxShadow(color: color, blurRadius: 160, spreadRadius: 90),
           ],
         ),
       ),
@@ -626,34 +434,24 @@ class _GlowCircle
 
 /// ================= LOADER =================
 
-class _ModernLoader
-    extends StatefulWidget {
-
+class _ModernLoader extends StatefulWidget {
   const _ModernLoader();
 
   @override
-  State<_ModernLoader>
-  createState() =>
-      _ModernLoaderState();
+  State<_ModernLoader> createState() => _ModernLoaderState();
 }
 
-class _ModernLoaderState
-    extends State<_ModernLoader>
+class _ModernLoaderState extends State<_ModernLoader>
     with SingleTickerProviderStateMixin {
-
-  late final AnimationController
-  _controller;
+  late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
 
-    _controller =
-    AnimationController(
+    _controller = AnimationController(
       vsync: this,
-      duration: const Duration(
-        milliseconds: 1200,
-      ),
+      duration: const Duration(milliseconds: 1200),
     )..repeat();
   }
 
@@ -667,40 +465,23 @@ class _ModernLoaderState
     return AnimatedBuilder(
       animation: _controller,
       builder: (_, __) {
-
         final delay = index * .2;
 
-        final value =
-        ((_controller.value -
-            delay) %
-            1.0);
+        final value = ((_controller.value - delay) % 1.0);
 
-        final scale =
-            .75 + (value * .45);
+        final scale = .75 + (value * .45);
 
         return Transform.scale(
           scale: scale,
           child: Container(
             width: 14,
             height: 14,
-            decoration:
-            BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color:
-              const Color(
-                0xff00E676,
-              ).withOpacity(
-                .45 +
-                    (value * .55),
-              ),
+              color: const Color(0xff00E676).withOpacity(.45 + (value * .55)),
               boxShadow: [
                 BoxShadow(
-                  color:
-                  const Color(
-                    0xff00E676,
-                  ).withOpacity(
-                    .30,
-                  ),
+                  color: const Color(0xff00E676).withOpacity(.30),
                   blurRadius: 12,
                 ),
               ],
@@ -712,19 +493,12 @@ class _ModernLoaderState
   }
 
   @override
-  Widget build(
-      BuildContext context) {
+  Widget build(BuildContext context) {
     return SizedBox(
       width: 100,
       child: Row(
-        mainAxisAlignment:
-        MainAxisAlignment
-            .spaceEvenly,
-        children: [
-          _dot(0),
-          _dot(1),
-          _dot(2),
-        ],
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [_dot(0), _dot(1), _dot(2)],
       ),
     );
   }
@@ -732,80 +506,48 @@ class _ModernLoaderState
 
 /// ================= PROGRESS =================
 
-class _ModernProgressBar
-    extends StatelessWidget {
+class _ModernProgressBar extends StatelessWidget {
+  final Animation<double> progress;
 
-  final Animation<double>
-  progress;
-
-  const _ModernProgressBar({
-    required this.progress,
-  });
+  const _ModernProgressBar({required this.progress});
 
   @override
-  Widget build(
-      BuildContext context) {
+  Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: progress,
       builder: (_, __) {
-
         return Column(
           children: [
-
             /// BAR
             ClipRRect(
-              borderRadius:
-              BorderRadius.circular(
-                30,
-              ),
+              borderRadius: BorderRadius.circular(30),
               child: Stack(
                 children: [
-
                   /// BG
                   Container(
                     height: 12,
-                    decoration:
-                    BoxDecoration(
-                      color: Colors
-                          .black
-                          .withOpacity(
-                        .05,
-                      ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(.05),
                     ),
                   ),
 
                   /// ACTIVE
                   FractionallySizedBox(
-                    widthFactor:
-                    progress.value,
+                    widthFactor: progress.value,
                     child: Container(
                       height: 12,
-                      decoration:
-                      BoxDecoration(
-                        gradient:
-                        LinearGradient(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
                           colors: [
-                            Colors
-                                .greenAccent
-                                .shade100,
-                            const Color(
-                              0xff00E676,
-                            ),
-                            const Color(
-                              0xff00C853,
-                            ),
+                            Colors.greenAccent.shade100,
+                            const Color(0xff00E676),
+                            const Color(0xff00C853),
                           ],
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color:
-                            const Color(
-                              0xff00E676,
-                            ).withOpacity(
-                              .45,
-                            ),
-                            blurRadius:
-                            20,
+                            color: const Color(0xff00E676).withOpacity(.45),
+                            blurRadius: 20,
                           ),
                         ],
                       ),
@@ -815,19 +557,15 @@ class _ModernProgressBar
               ),
             ),
 
-            const SizedBox(
-              height: 14,
-            ),
+            const SizedBox(height: 14),
 
             /// PERCENT
             Text(
               "${(progress.value * 100).toInt()}%",
               style: TextStyle(
-                color: Colors.black
-                    .withOpacity(.45),
+                color: Colors.black.withOpacity(.45),
                 fontSize: 12,
-                fontWeight:
-                FontWeight.w700,
+                fontWeight: FontWeight.w700,
                 letterSpacing: .5,
               ),
             ),

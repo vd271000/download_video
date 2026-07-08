@@ -32,7 +32,6 @@ class Config {
     "show_ads": true,
     "show_ads_before": true,
     "checkYouTube": true,
-
     // 🔥 IMPORTANT: JSON phải là String
     "keys": '{"list":[]}',
     "youtube": '{"list":[]}',
@@ -85,39 +84,29 @@ class Config {
   }
 
   /// ================= BOOL =================
-  static bool get showAds =>
-      _config.getBool("show_ads");
+  static bool get showAds => _config.getBool("show_ads");
 
-  static bool get showAdsBefore =>
-      _config.getBool("show_ads_before");
+  static bool get showAdsBefore => _config.getBool("show_ads_before");
 
-  static bool get checkYouTube =>
-      _config.getBool("checkYouTube");
+  static bool get checkYouTube => _config.getBool("checkYouTube");
+
   /// ================= NATIVE =================
-  static String get nativeAd =>
-      _config.getString("native_ad");
+  static String get nativeAd => _config.getString("native_ad");
 
-  static String get nativeLanguageAd =>
-      _config.getString("native_language_ad");
+  static String get nativeLanguageAd => _config.getString("native_language_ad");
 
-  static String get nativeInfoAd =>
-      _config.getString("native_info_ad");
+  static String get nativeInfoAd => _config.getString("native_info_ad");
 
-  static String get nativePage1Ad =>
-      _config.getString("native_page_1");
+  static String get nativePage1Ad => _config.getString("native_page_1");
 
-  static String get nativePage2Ad =>
-      _config.getString("native_page_2");
+  static String get nativePage2Ad => _config.getString("native_page_2");
 
-  static String get nativePage3Ad =>
-      _config.getString("native_page_3");
+  static String get nativePage3Ad => _config.getString("native_page_3");
 
-  static String get nativeSelectAd =>
-      _config.getString("native_select");
+  static String get nativeSelectAd => _config.getString("native_select");
 
   /// ================= INTERSTITIAL =================
-  static String get interstitialAd =>
-      _config.getString("interstitial_ad");
+  static String get interstitialAd => _config.getString("interstitial_ad");
 
   static String get interstitialStartAd =>
       _config.getString("interstitial_start_ad");
@@ -129,15 +118,12 @@ class Config {
       _config.getString("interstitial_select");
 
   /// ================= REWARDED =================
-  static String get rewardedAd =>
-      _config.getString("rewarded_ad");
+  static String get rewardedAd => _config.getString("rewarded_ad");
 
   /// ================= BANNER =================
-  static String get bannerAd =>
-      _config.getString("banner_ad");
+  static String get bannerAd => _config.getString("banner_ad");
 
-  static String get bannerHomeAd =>
-      _config.getString("banner_home_ad");
+  static String get bannerHomeAd => _config.getString("banner_home_ad");
 
   /// ================= HELPERS =================
   static bool get hideAds => !showAds;
